@@ -4,27 +4,27 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.HashMap;
-import java.util.HashSet;
 
 public class RxpProtocol {
 
     short port;
     DatagramSocket socket;
-    HashSet<RxpSocket> connections;
+    HashMap<String, RxpSocket> connections; //key = address + srcPort + destPort
 
     public static final int MAX_MTU = 1500;
 
     public RxpProtocol(short port) throws SocketException {
         this.port = port;
         socket = new DatagramSocket(port);
-        connections = new HashSet<RxpSocket>();
+        connections = new HashMap<>();
     }
 
     public void registerSocket(RxpSocket socket) {
-        if (connections.contains(socket)) {
-            // TODO: THrow exception
+        if (connections.containsValue(socket)) {
+            // TODO: Throw exception
         } else {
-            connections.add(socket);
+            String key = socket.address.toString() + socket.srcPort + socket.destPort;
+            connections.put(key, socket);
         }
     }
 
@@ -43,12 +43,11 @@ public class RxpProtocol {
                     }
                     try {
                         RxpPacket packet = new RxpPacket(buffer, udpPacket.getLength());
-
-                        // TODO: Redo connections to a hashmap of addr + destPort + srcPort -> RxpSocket
-//                        RxpSocket connection = connections.get(udpPacket.getAddress().toString() + packet.destPort);
-//                        if (connection != null) {
-//                            connection.wri (packet);
-//                        }
+                        RxpSocket connection = connections.get(udpPacket.getAddress().toString()
+                                + packet.srcPort + packet.destPort);
+                        if (connection != null) {
+                            connection.receivePacket(packet);
+                        }
                     } catch (InvalidChecksumException e) {
                         e.printStackTrace();
                     }
