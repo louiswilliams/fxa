@@ -1,12 +1,13 @@
 import java.net.DatagramSocket;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 
 public class RxpServerSocket {
 
     RxpSocket socket;
 
-    public RxpServerSocket(int port) throws SocketException {
-        socket = new RxpSocket(null, port);
+    public RxpServerSocket(RxpProtocol rxpProtocol, short port) throws SocketException, UnknownHostException {
+        socket = new RxpSocket(rxpProtocol, null, port);
     }
 
     public RxpSocket accept() {
