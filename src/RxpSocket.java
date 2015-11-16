@@ -1,9 +1,18 @@
+import java.io.IOException;
+import java.net.*;
 
 public class RxpSocket {
 
+    InetAddress address;
+    RxpProtocol protocol;
+    short srcPort;
+    short destPort;
 
-    public RxpSocket(String hostname, int port) {
 
+    public RxpSocket(RxpProtocol protocol, String hostname, short port) throws UnknownHostException {
+        this.protocol = protocol;
+        destPort = port;
+        address = InetAddress.getByName(hostname);
     }
     
     public void close() {
@@ -18,7 +27,9 @@ public class RxpSocket {
         return 0;
     }
 
-    public  void reset() {
-
+    public  void reset() throws IOException {
+        RxpPacket packet = new RxpPacket(srcPort, destPort);
+        packet.rst = true;
     }
+
 }

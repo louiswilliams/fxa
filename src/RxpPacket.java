@@ -1,5 +1,4 @@
 import java.nio.ByteBuffer;
-import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -46,7 +45,7 @@ public class RxpPacket {
             buffer.put(HEADER_SIZE + i, data[i]);
         }
 
-        byte hash[] = computeHash(buffer.array());
+        byte hash[] = computeHash(buffer.array(), buffer.capacity());
 
         for (int i = 0; i < hash.length; i++) {
             buffer.put(16 + i, hash[i]);
@@ -54,7 +53,12 @@ public class RxpPacket {
         return buffer.array();
     }
 
-    public RxpPacket (byte[] packet) throws InvalidChecksumException {
+    public RxpPacket(short srcPort, short destPort){
+        this.srcPort = srcPort;
+        this.destPort = destPort;
+    }
+
+    public RxpPacket (byte[] packet, int length) throws InvalidChecksumException {
         ByteBuffer buffer = ByteBuffer.wrap(packet);
 
         destPort = buffer.getShort(0);
@@ -71,12 +75,12 @@ public class RxpPacket {
         auth = getBool(flags, 2);
 
         windowSize = buffer.getShort(14);
-        data = new byte[packet.length - HEADER_SIZE];
+        data = new byte[length - HEADER_SIZE];
         for (int i = 0; i < data.length; i++) {
             data[i] = buffer.get(i + HEADER_SIZE);
         }
 
-        byte[] hash = computeHash(packet);
+        byte[] hash = computeHash(packet, length);
         for (int i = 0; i < hash.length; i++) {
             hash[i] = buffer.get(16 + i);
         }
@@ -92,7 +96,7 @@ public class RxpPacket {
         }
     }
 
-    private static byte[] computeHash(byte[] preFinalized) {
+    private static byte[] computeHash(byte[] preFinalized, int length) {
         MessageDigest md;
         try {
             md = MessageDigest.getInstance("MD5");
@@ -101,7 +105,7 @@ public class RxpPacket {
         }
 
         md.update(preFinalized, 0, 16);
-        md.update(preFinalized, HEADER_SIZE, preFinalized.length - HEADER_SIZE);
+        md.update(preFinalized, HEADER_SIZE, length - HEADER_SIZE);
 
         ByteBuffer buffer = ByteBuffer.allocate(4);
         byte hash[] = md.digest();
