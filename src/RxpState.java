@@ -7,7 +7,6 @@ public enum RxpState {
     AUTH_COMPLETED,
     ESTABLISHED,
     CLOSING,
-    FIN_WAIT,
     FIN_WAIT_1,
     FIN_WAIT_2,
     CLOSE_WAIT,

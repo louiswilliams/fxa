@@ -20,7 +20,7 @@ public class RxpSocket {
 
     //TODO: how are we keeping track of sequence numbers?
     int sequenceNum;
-    String challenge = "";
+    String hash = "";
 
     public RxpSocket(RxpProtocol protocol, String hostname, short port) throws UnknownHostException {
         this.protocol = protocol;
@@ -53,8 +53,8 @@ public class RxpSocket {
         return len;
     }
 
-    private void sendPacket(RxpPacket packet, int sequence, int acknowledgement) {
-        packet.sequence = sequence;
+    private void sendPacket(RxpPacket packet, int acknowledgement) {
+        packet.sequence = sequenceNum;
         packet.acknowledgement = acknowledgement;
 
         byte[] buffer = packet.getBytes();
@@ -67,52 +67,96 @@ public class RxpSocket {
     }
 
     public void receivePacket(RxpPacket packet) {
-        //TODO: check state and proceed accordingly
+        //receive a SYN (1st step of handshake)
         if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn){
-            sendAuthenticationRequest(sequenceNum, packet.sequence + packet.data.length + packet.HEADER_SIZE);
-        } else if (state == RxpState.SYN_SENT && packet.syn && packet.ack && packet.auth){
-            if(packet.data.equals(challenge.getBytes())){
-                sendAck(sequenceNum, packet.sequence + packet.data.length + packet.HEADER_SIZE);
+            sendAuthenticationRequest(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+        }
+        //receive a SYN+ACK+AUTH (2nd step of handshake)
+        else if (state == RxpState.SYN_SENT || state == RxpState.AUTH_SENT
+                && packet.syn && packet.ack && packet.auth){
+            receiveAuthenticationRequest(packet.sequence + packet.data.length + packet.HEADER_SIZE, packet.data);
+        }
+        //receive a ACK+AUTH (3rd step of handshake), verify MD5 hash
+        else if (state == RxpState.AUTH_SENT || state == RxpState.AUTH_SENT_1 && packet.ack && packet.auth) {
+            byte[] digest = computeMD5(hash.getBytes());
+            if(packet.data.equals(digest)){
+                sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+                state = RxpState.ESTABLISHED;
+            } else {
+                sendReset();
+                state = RxpState.LISTEN;
             }
         }
+        //receive ACK (4th step of handshake)
+        else if (state == RxpState.AUTH_SENT_1 || state == RxpState.AUTH_COMPLETED && packet.ack){
+            state = RxpState.ESTABLISHED;
+        }
+        //receive a reset
+        else if (packet.rst){
+            state = RxpState.CLOSED;
+        }
+        //receive a FIN
+        else if (state == RxpState.ESTABLISHED && packet.fin){
+            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+            state = RxpState.CLOSE_WAIT;
+        }
+        else if (state == RxpState.FIN_WAIT_1 && packet.fin && packet.ack){
+            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+            state = RxpState.TIMED_WAIT;
+        }
+        else if (state == RxpState.FIN_WAIT_1 && packet.fin){
+            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+            state = RxpState.CLOSING;
+        }
+        else if (state == RxpState.FIN_WAIT_1 && packet.ack){
+            state = RxpState.FIN_WAIT_2;
+        }
+        else if (state == RxpState.CLOSING && packet.ack){
+            state = RxpState.TIMED_WAIT;
+        }
+        else if (state == RxpState.FIN_WAIT_2 && packet.fin){
+            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
+            state = RxpState.TIMED_WAIT;
+        }
+        else if (state == RxpState.LAST_ACK && packet.ack){
+            state = RxpState.CLOSED;
+        }
+        //TODO: established state, normal data packets and ACKs/Nacks
     }
 
 //    public void reset() throws IOException {
 //
 //    }
+
     private void sendSyn(){
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.syn = true;
-        sendPacket(packet, sequenceNum, -1);
+        sendPacket(packet, -1);
     }
 
-    private void sendAck(int sequence, int acknowledgement) {
+    private void sendAck(int acknowledgement) {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.ack = true;
-        sendPacket(packet, sequence, acknowledgement);
+        sendPacket(packet, acknowledgement);
     }
 
-    private void sendData(byte[] data, int sequence){
+    private void sendData(byte[] data){
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.data = data;
-        sendPacket(packet, sequence, -1);
+        sendPacket(packet, -1);
     }
 
-    private void sendDataAndAck(byte[] data, int sequence, int acknowledgment) {
+    private void sendDataAndAck(byte[] data, int acknowledgment) {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.data = data;
         packet.ack = true;
-        sendPacket(packet, sequence, acknowledgment);
+        sendPacket(packet, acknowledgment);
     }
 
-    private void sendNack(int sequence, int acknowledgement) {
+    private void sendNack(int acknowledgment) {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.nack = true;
-        packet.sequence = sequence;
-        packet.acknowledgement = acknowledgement;
-
-        byte[] buffer = packet.getBytes();
-        send(buffer, buffer.length);
+        sendPacket(packet, acknowledgment);
     }
 
     private void sendReset() {
@@ -125,33 +169,27 @@ public class RxpSocket {
     }
 
     //received a SYN so send a SYN+ACK+AUTH
-    private void sendAuthenticationRequest(int sequence, int acknowledgement) {
-        challenge = generateString(rand,"abcdefghijklmnopqrstuvwxyz0123456789", 64);
+    private void sendAuthenticationRequest(int acknowledgement) {
+        hash = generateString(rand,"abcdefghijklmnopqrstuvwxyz0123456789", 64);
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.ack = true;
         packet.syn = true;
         packet.auth = true;
-        packet.data = challenge.getBytes();
-        sendPacket(packet, sequence, acknowledgement);
+        packet.data = hash.getBytes();
+        sendPacket(packet, acknowledgement);
 
         state = RxpState.AUTH_SENT;
     }
 
     //received a SYN+ACK+AUTH so send an ACK+AUTH
-    private void receiveAuthenticationRequest(int sequence, int acknowledgement, String challenge) {
-        byte[] digest = new byte[]{};
-        try{
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            digest = md.digest(challenge.getBytes());
-        }catch(NoSuchAlgorithmException e) {
-            System.err.println(e.getMessage());
-        }
+    private void receiveAuthenticationRequest(int acknowledgement, byte[] challenge) {
+        byte[] digest = computeMD5(challenge);
 
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.ack = true;
         packet.auth = true;
         packet.data = digest;
-        sendPacket(packet, sequence, acknowledgement);
+        sendPacket(packet, acknowledgement);
 
         if(state == RxpState.AUTH_SENT) //both sent a SYN at the same time
             state = RxpState.AUTH_SENT_1;
@@ -172,6 +210,17 @@ public class RxpSocket {
             text[i] = characters.charAt(rng.nextInt(characters.length()));
         }
         return new String(text);
+    }
+
+    private byte[] computeMD5(byte[] challenge){
+        byte[] digest = new byte[]{};
+        try{
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            digest = md.digest(challenge);
+        }catch(NoSuchAlgorithmException e) {
+            System.err.println(e.getMessage());
+        }
+        return digest;
     }
 
 }
