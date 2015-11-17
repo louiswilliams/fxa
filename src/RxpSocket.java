@@ -18,7 +18,6 @@ public class RxpSocket {
     RxpState state;
     Random rand;
 
-    //TODO: how are we keeping track of sequence numbers?
     int sequenceNum;
     String hash = "";
 
