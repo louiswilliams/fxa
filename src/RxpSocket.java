@@ -58,7 +58,7 @@ public class RxpSocket {
 
         byte[] buffer = packet.getBytes();
         send(buffer, buffer.length);
-        sequenceNum += buffer.length;
+        sequenceNum += packet.data.length;
     }
 
     public int receive(byte[] buffer, int len) {
@@ -122,10 +122,6 @@ public class RxpSocket {
         }
         //TODO: established state, normal data packets and ACKs/Nacks
     }
-
-//    public void reset() throws IOException {
-//
-//    }
 
     private void sendSyn(){
         RxpPacket packet = new RxpPacket(srcPort, destPort);
