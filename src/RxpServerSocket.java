@@ -7,7 +7,7 @@ public class RxpServerSocket {
     RxpSocket socket;
 
     public RxpServerSocket(RxpProtocol rxpProtocol, short port) throws SocketException, UnknownHostException {
-        socket = new RxpSocket(rxpProtocol, null, port);
+        socket = new RxpSocket(rxpProtocol, port);
     }
 
     public RxpSocket accept() {

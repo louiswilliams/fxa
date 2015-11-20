@@ -1,11 +1,12 @@
+import java.io.*;
 import java.net.*;
+import java.util.Objects;
 import java.util.Random;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class RxpSocket {
 
-    InetAddress address;
     RxpProtocol protocol;
     short srcPort;
     short destPort;
@@ -21,51 +22,36 @@ public class RxpSocket {
     int sequenceNum;
     String hash = "";
 
-    public RxpSocket(RxpProtocol protocol, String hostname, short port) throws UnknownHostException {
+    InputStream inputStream;
+    OutputStream outputStream;
+
+    public RxpSocket(RxpProtocol protocol, short port){
         this.protocol = protocol;
         destPort = port;
-        address = InetAddress.getByName(hostname);
         protocol.registerSocket(this);
         state = RxpState.LISTEN;
         rand = new Random();
         sequenceNum = 0; //TODO: initiate sequence number correctly
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                while (true) {
-                    if (bufferSize > 0) {
-
-                    }
-                }
-            }
-        }).start();
+        inputStream = new RxpInputStream(protocol, this);
     }
     
     public void close() {
     }
 
-    public int send(byte[] toSend, int len) {
-        System.arraycopy(toSend, 0, buffer, windowStart + windowSize, len);
-        // TODO: Split up buffer into packets. Call protocol.sendPacket, or protocol.sendAll
-        // TODO: Logic to handle window size, acking and nacking
-        return len;
-    }
 
-    private void sendPacket(RxpPacket packet, int acknowledgement) {
+    private void sendPacket(RxpPacket packet, int acknowledgement) throws IOException {
         packet.sequence = sequenceNum;
         packet.acknowledgement = acknowledgement;
 
         byte[] buffer = packet.getBytes();
-        send(buffer, buffer.length);
+        outputStream.write(buffer, 0, buffer.length);
         sequenceNum += buffer.length;
     }
 
-    public int receive(byte[] buffer, int len) {
-        return 0;
-    }
+    public void receivePacket(RxpPacket packet) throws IOException {
 
-    public void receivePacket(RxpPacket packet) {
+
         //receive a SYN (1st step of handshake)
         if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn){
             sendAuthenticationRequest(packet.sequence + packet.data.length + packet.HEADER_SIZE);
@@ -127,48 +113,47 @@ public class RxpSocket {
 //
 //    }
 
-    private void sendSyn(){
+    private void sendSyn() throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.syn = true;
         sendPacket(packet, -1);
     }
 
-    private void sendAck(int acknowledgement) {
+    private void sendAck(int acknowledgement) throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.ack = true;
         sendPacket(packet, acknowledgement);
     }
 
-    private void sendData(byte[] data){
+    private void sendData(byte[] data) throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.data = data;
         sendPacket(packet, -1);
     }
 
-    private void sendDataAndAck(byte[] data, int acknowledgment) {
+    private void sendDataAndAck(byte[] data, int acknowledgment) throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.data = data;
         packet.ack = true;
         sendPacket(packet, acknowledgment);
     }
 
-    private void sendNack(int acknowledgment) {
+    private void sendNack(int acknowledgment) throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.nack = true;
         sendPacket(packet, acknowledgment);
     }
 
-    private void sendReset() {
+    private void sendReset() throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.rst = true;
 
-        byte[] buffer = packet.getBytes();
-        send(buffer, buffer.length);
+        sendPacket(packet, 0);
         state = RxpState.CLOSED;
     }
 
     //received a SYN so send a SYN+ACK+AUTH
-    private void sendAuthenticationRequest(int acknowledgement) {
+    private void sendAuthenticationRequest(int acknowledgement) throws IOException {
         hash = generateString(rand,"abcdefghijklmnopqrstuvwxyz0123456789", 64);
         RxpPacket packet = new RxpPacket(srcPort, destPort);
         packet.ack = true;
@@ -181,7 +166,7 @@ public class RxpSocket {
     }
 
     //received a SYN+ACK+AUTH so send an ACK+AUTH
-    private void receiveAuthenticationRequest(int acknowledgement, byte[] challenge) {
+    private void receiveAuthenticationRequest(int acknowledgement, byte[] challenge) throws IOException {
         byte[] digest = computeMD5(challenge);
 
         RxpPacket packet = new RxpPacket(srcPort, destPort);
@@ -197,8 +182,7 @@ public class RxpSocket {
     }
 
     public boolean equals(Object other) {
-        return (address.equals(((RxpSocket)other).address) && srcPort == ((RxpSocket)other).srcPort
-                && destPort == ((RxpSocket)other).destPort);
+        return other instanceof RxpSocket && (srcPort == ((RxpSocket) other).srcPort && destPort == ((RxpSocket) other).destPort);
     }
 
     private static String generateString(Random rng, String characters, int length)

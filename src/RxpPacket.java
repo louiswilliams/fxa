@@ -53,6 +53,10 @@ public class RxpPacket {
         return buffer.array();
     }
 
+    public RxpPacket() {
+
+    }
+
     public RxpPacket(short srcPort, short destPort){
         this.srcPort = srcPort;
         this.destPort = destPort;
