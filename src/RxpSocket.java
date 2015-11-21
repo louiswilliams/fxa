@@ -149,9 +149,9 @@ public class RxpSocket implements RxpReceiver {
         //TODO: established state, normal data packets and ACKs/Nacks
     }
 
-//    public void reset() throws IOException {
-//
-//    }
+    public void reset() throws IOException {
+
+    }
 
     private void sendSyn() throws IOException {
         RxpPacket packet = new RxpPacket(srcPort, destPort);
