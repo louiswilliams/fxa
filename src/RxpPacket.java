@@ -60,6 +60,7 @@ public class RxpPacket {
     public RxpPacket(short srcPort, short destPort){
         this.srcPort = srcPort;
         this.destPort = destPort;
+        data = new byte[0];
     }
 
     public RxpPacket (byte[] packet, int length) throws InvalidChecksumException {
