@@ -53,14 +53,12 @@ public class RxpPacket {
         return buffer.array();
     }
 
-    public RxpPacket() {
+    public RxpPacket(RxpSocket socket) {
+        this.srcPort = socket.getSourcePort();
+        this.destPort = socket.getDestPort();
 
-    }
-
-    public RxpPacket(short srcPort, short destPort){
-        this.srcPort = srcPort;
-        this.destPort = destPort;
-        data = new byte[0];
+        data = new byte[]{};
+        sequence = socket.getSequence();
     }
 
     public RxpPacket (byte[] packet, int length) throws InvalidChecksumException {
@@ -71,7 +69,7 @@ public class RxpPacket {
         sequence = buffer.getInt(4);
         acknowledgement= buffer.getInt(8);
 
-        byte flags = buffer.get(4);
+        byte flags = buffer.get(12);
         ack = getBool(flags, 7);
         nack = getBool(flags, 6);
         syn = getBool(flags, 5);
@@ -125,5 +123,26 @@ public class RxpPacket {
 
     private boolean getBool(byte i, int bit) {
         return (1 & (i >> bit)) == 1;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder builder = new StringBuilder();
+        builder.append("RxpPacket= ");
+        builder.append("destPort: " + destPort + ", ");
+        builder.append("srcPort: " + srcPort + ", ");
+        builder.append("windowSize: " + windowSize + ", ");
+        builder.append("sequence: " + sequence + ", ");
+        builder.append("acknowledgement: " + acknowledgement + ", ");
+        builder.append("ack: " + ack + ", ");
+        builder.append("nack: " + nack + ", ");
+        builder.append("syn: " + syn + ", ");
+        builder.append("fin: " + fin + ", ");
+        builder.append("rst: " + rst + ", ");
+        builder.append("auth: " + auth + ", ");
+        builder.append("data[" + data.length + "]: " + new String(data));
+
+        return builder.toString();
+
     }
 }

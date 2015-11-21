@@ -1,3 +1,5 @@
+import com.sun.istack.internal.NotNull;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -57,6 +59,14 @@ public class RxpOutputStream extends OutputStream {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public void write(byte b[], int off, int len) throws IOException {
+        for (int i = off; i < len; i++) {
+            write(b[i]);
+        }
+        flush();
     }
 
     @Override

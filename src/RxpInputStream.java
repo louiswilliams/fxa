@@ -5,10 +5,8 @@ import java.util.concurrent.ArrayBlockingQueue;
 public class RxpInputStream extends InputStream implements DataListener {
 
     private final ArrayBlockingQueue<Byte> buffer;
-    private RxpSocket socket;
 
-    public RxpInputStream(RxpSocket s) {
-        this.socket = s;
+    public RxpInputStream() {
 
         buffer = new ArrayBlockingQueue<>(100 * RxpSocket.MTU);
     }

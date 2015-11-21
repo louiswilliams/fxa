@@ -1,6 +1,7 @@
 import javax.xml.crypto.Data;
 import java.io.*;
 import java.net.*;
+import java.util.Arrays;
 import java.util.Objects;
 import java.util.Random;
 import java.security.MessageDigest;
@@ -10,23 +11,23 @@ public class RxpSocket implements RxpReceiver {
 
     DatagramSocket netEmuSocket;
 
-    short srcPort;
-    short destPort;
-
-    InetAddress destination;
-
-    private int windowStart;
-    private int windowSize;
-    private byte[] buffer;
-    private int bufferSize;
-
-    public static final int MTU = 1500;
-
-    private RxpState state;
-    private Random rand;
+    private short srcPort;
+    private short destPort;
 
     private int lastAck;
     private int sequenceNum;
+
+    private InetAddress destination;
+    private int windowStart;
+    private int windowSize;
+    private byte[] buffer;
+
+    private int bufferSize;
+
+    public static final int MTU = 1500;
+    private RxpState state;
+
+    private Random rand;
     private String hash = "";
 
     private RxpInputStream inputStream;
@@ -36,102 +37,185 @@ public class RxpSocket implements RxpReceiver {
     RxpReceiver dataReceiver;
 
     boolean receiverRun = true;
+    boolean connected = false;
+    final Object connectLock;
 
 
-    public RxpSocket(DatagramSocket netEmuSocket, InetAddress dest, short destPort) {
-        Random r = new Random();
-        this.netEmuSocket = netEmuSocket;
-        this.destPort = destPort;
-        srcPort = (short) (r.nextInt(32767 - 1024) + 1024);
-        destination = dest;
-        state = RxpState.LISTEN;
-        rand = new Random();
-        sequenceNum = 0; //TODO: initiate sequence number correctly
-
-        inputStream = new RxpInputStream(this);
-        outputStream = new RxpOutputStream(this);
-        dataReceiver = this;
+    /**
+     * Create a socket with a random source port
+     *
+     * @param netEmuSocket NetEmu UDP socket
+     */
+    public RxpSocket(DatagramSocket netEmuSocket) {
+        this(netEmuSocket, (short) (new Random().nextInt(Short.MAX_VALUE - 1024) + 1024));
     }
 
-    public RxpSocket(DatagramSocket netEmuSocket, InetAddress dest, short port, RxpReceiver dataReceiver) {
-        this(netEmuSocket, dest, port);
+    /**
+     * Create a socket given a NetEmu UDP socket and a Rxp port to listen on
+     *
+     * @param netEmuSocket NetEmu UDP socket for our connection
+     * @param listen Rxp port to listen on
+     */
+    public RxpSocket(DatagramSocket netEmuSocket, short listen) {
+        System.out.println("Creating socket on " + listen);
+        Random r = new Random();
+        this.netEmuSocket = netEmuSocket;
+        this.srcPort = listen;
+        state = RxpState.CLOSED;
+        rand = new Random();
+        sequenceNum = r.nextInt(Integer.MAX_VALUE);
+
+        inputStream = new RxpInputStream();
+        outputStream = new RxpOutputStream(this);
+        dataReceiver = this;
+        connectLock = new Object();
+    }
+
+    /**
+     * Create a socket and override the default RxpReceiver. This is used by RxpServerSockets to
+     * handle multiple incoming connections.
+     *
+     * @param netEmuSocket NetEmu UDP connection
+     * @param listen Listen port. This will be the server's destination port
+     * @param dataReceiver The server's RxpDataReceiver
+     */
+    public RxpSocket(DatagramSocket netEmuSocket, short listen, RxpReceiver dataReceiver) {
+        this(netEmuSocket, listen);
         this.dataReceiver = dataReceiver;
     }
 
-    public void connect() throws IOException {
-        System.out.println("Connecting");
+    /**
+     * Attaches a socket to a remote host at a given port, but does not initiate a connection.
+     * Used by RxpServerSocket to provide sockets when accept() is called
+     *
+     * @param dest Destination address
+     * @param destPort Destination port
+     */
+    void attach(InetAddress dest, short destPort) {
+        this.destPort = destPort;
+        this.destination = dest;
+
+        state = RxpState.LISTEN;
+
         receiverStart();
+    }
+
+    /**
+     * Attach a socket to a remote host and initiate a connection. Blocks until connection is established
+     * or an IOException is thrown
+     *
+     * @param dest Destination host
+     * @param destPort Destination port
+     * @throws IOException
+     */
+    public void connect(InetAddress dest, short destPort) throws IOException {
+        attach(dest, destPort);
+
+        System.out.println("Connecting");
         sendSyn();
+        waitForConnection();
+
+    }
+
+    /**
+     * Block and wait for connection to become established. Called by RxpServerSocket when using accept()
+     * and RxpSocket when initiating a connection.
+     *
+     * @throws IOException Connection could not be established and was closed
+     */
+    void waitForConnection() throws IOException {
+        try {
+            synchronized (connectLock) {
+                while (state != RxpState.ESTABLISHED && state != RxpState.CLOSED) {
+                    connectLock.wait();
+                }
+            }
+        } catch (InterruptedException e) {
+            throw new IOException(e);
+        }
     }
 
     public void close() {
-        receiverStop();
+        dataReceiver.receiverStop();
         inputStream.close();
         outputStream.close();
     }
 
-    private void sendPacketWithAck(RxpPacket packet, int ack) throws IOException {
+    void sendPacketWithAck(RxpPacket packet, int ack) throws IOException {
         lastAck = ack;
         sendPacket(packet);
     }
 
-    private void sendPacket(RxpPacket packet) throws IOException {
+    void sendPacket(RxpPacket packet) throws IOException {
+        byte[] buffer = packet.getBytes();
         packet.sequence = sequenceNum;
         packet.srcPort = srcPort;
         packet.destPort = destPort;
         packet.acknowledgement = lastAck;
         packet.ack = true;
 
-        byte[] buffer = packet.getBytes();
         sequenceNum += buffer.length;
+
+        System.out.println("Sending (" + state + "): " + packet);
+
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
     }
 
-    public void receivePacket(RxpPacket packet) throws IOException {
+    void receivePacket(RxpPacket packet) throws IOException {
 
+        System.out.println("Received (" + state + "): " + packet);
         inputStream.received(packet.data, packet.data.length);
 
-        //receive a SYN (1st step of handshake)
-        if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn){
-            sendAuthenticationRequest(packet.sequence + packet.data.length);
+        // 1. Server: receive a SYN (handshake)
+        if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn && !packet.auth){
+            sendAuthenticationRequest(packet.sequence + 1);
         }
-        //receive a SYN+ACK+AUTH (2nd step of handshake)
+        // 2. Client: receive a SYN+ACK+AUTH (handshake)
         else if (state == RxpState.SYN_SENT || state == RxpState.AUTH_SENT
                 && packet.syn && packet.ack && packet.auth){
-            receiveAuthenticationRequest(packet.sequence + packet.data.length, packet.data);
+            receiveAuthenticationRequest(packet.sequence + 1, packet.data);
         }
-        //receive a ACK+AUTH (3rd step of handshake), verify MD5 hash
+        // 3. Server: receive a ACK+AUTH (handshake), verify MD5 hash
         else if (state == RxpState.AUTH_SENT || state == RxpState.AUTH_SENT_1 && packet.ack && packet.auth) {
             byte[] digest = computeMD5(hash.getBytes());
-            if(packet.data.equals(digest)){
-                sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
-                state = RxpState.ESTABLISHED;
+            if(Arrays.equals(packet.data, digest)){
+                sendAck(packet.sequence + packet.data.length);
+                synchronized (connectLock) {
+                    state = RxpState.ESTABLISHED;
+                    connectLock.notify();
+                }
             } else {
+                state = RxpState.CLOSED;
                 sendReset();
-                state = RxpState.LISTEN;
             }
         }
-        //receive ACK (4th step of handshake)
+        // 4. Client: receive ACK (handshake)
         else if (state == RxpState.AUTH_SENT_1 || state == RxpState.AUTH_COMPLETED && packet.ack){
-            state = RxpState.ESTABLISHED;
+            synchronized (connectLock) {
+                state = RxpState.ESTABLISHED;
+                connectLock.notify();
+            }
         }
-        //receive a reset
+        // Client/server: receive a reset
         else if (packet.rst){
-            state = RxpState.CLOSED;
+            synchronized (connectLock) {
+                state = RxpState.CLOSED;
+                connectLock.notify();
+            }
         }
         //receive a FIN
         else if (state == RxpState.ESTABLISHED && packet.fin){
-            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
             state = RxpState.CLOSE_WAIT;
+            sendAck(packet.sequence + packet.data.length);
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin && packet.ack){
-            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
             state = RxpState.TIMED_WAIT;
+            sendAck(packet.sequence + packet.data.length);
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin){
-            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
             state = RxpState.CLOSING;
+            sendAck(packet.sequence + packet.data.length);
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.ack){
             state = RxpState.FIN_WAIT_2;
@@ -140,11 +224,14 @@ public class RxpSocket implements RxpReceiver {
             state = RxpState.TIMED_WAIT;
         }
         else if (state == RxpState.FIN_WAIT_2 && packet.fin){
-            sendAck(packet.sequence + packet.data.length + packet.HEADER_SIZE);
             state = RxpState.TIMED_WAIT;
+            sendAck(packet.sequence + packet.data.length);
         }
         else if (state == RxpState.LAST_ACK && packet.ack){
-            state = RxpState.CLOSED;
+            synchronized (connectLock) {
+                state = RxpState.CLOSED;
+                connectLock.notify();
+            }
         }
         //TODO: established state, normal data packets and ACKs/Nacks
     }
@@ -153,41 +240,43 @@ public class RxpSocket implements RxpReceiver {
 
     }
 
-    private void sendSyn() throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+    void sendSyn() throws IOException {
+        RxpPacket packet = new RxpPacket(this);
         packet.syn = true;
+        state = RxpState.SYN_SENT;
         sendPacket(packet);
     }
 
-    private void sendAck(int ack) throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+    void sendAck(int ack) throws IOException {
+        RxpPacket packet = new RxpPacket(this);
         packet.ack = true;
         sendPacketWithAck(packet, ack);
     }
 
     void sendData(byte[] data, int len) throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+        RxpPacket packet = new RxpPacket(this);
         byte copy[] = new byte[len];
+        System.out.println("Sending data: " + new String(data));
         System.arraycopy(data, 0, copy, 0, len);
         packet.data = copy;
         sendPacket(packet);
     }
 
-    private void sendDataAndAck(byte[] data) throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+    void sendDataAndAck(byte[] data) throws IOException {
+        RxpPacket packet = new RxpPacket(this);
         packet.data = data;
         packet.ack = true;
         sendPacket(packet);
     }
 
-    private void sendNack() throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+    void sendNack() throws IOException {
+        RxpPacket packet = new RxpPacket(this);
         packet.nack = true;
         sendPacket(packet);
     }
 
-    private void sendReset() throws IOException {
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+    void sendReset() throws IOException {
+        RxpPacket packet = new RxpPacket(this);
         packet.rst = true;
 
         sendPacket(packet);
@@ -195,9 +284,9 @@ public class RxpSocket implements RxpReceiver {
     }
 
     //received a SYN so send a SYN+ACK+AUTH
-    private void sendAuthenticationRequest(int acknowledgement) throws IOException {
+    void sendAuthenticationRequest(int acknowledgement) throws IOException {
         hash = generateString(rand,"abcdefghijklmnopqrstuvwxyz0123456789", 64);
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+        RxpPacket packet = new RxpPacket(this);
         packet.ack = true;
         packet.syn = true;
         packet.auth = true;
@@ -208,19 +297,22 @@ public class RxpSocket implements RxpReceiver {
     }
 
     //received a SYN+ACK+AUTH so send an ACK+AUTH
-    private void receiveAuthenticationRequest(int acknowledgement, byte[] challenge) throws IOException {
-        byte[] digest = computeMD5(challenge);
+    void receiveAuthenticationRequest(int acknowledgement, byte[] challenge) throws IOException {
+        if(state == RxpState.AUTH_SENT) //both sent a SYN at the same time
+        {
+            state = RxpState.AUTH_SENT_1;
+        }
+        else {
+            state = RxpState.AUTH_COMPLETED;
+        }
 
-        RxpPacket packet = new RxpPacket(srcPort, destPort);
+        byte[] digest = computeMD5(challenge);
+        RxpPacket packet = new RxpPacket(this);
         packet.ack = true;
         packet.auth = true;
         packet.data = digest;
-        sendPacket(packet);
+        sendPacketWithAck(packet, acknowledgement);
 
-        if(state == RxpState.AUTH_SENT) //both sent a SYN at the same time
-            state = RxpState.AUTH_SENT_1;
-        else
-            state = RxpState.AUTH_COMPLETED;
     }
 
     public boolean equals(Object other) {
@@ -287,5 +379,34 @@ public class RxpSocket implements RxpReceiver {
     @Override
     public void receiverStop() {
         receiverRun = false;
+    }
+
+    public RxpState getState() {
+        return state;
+    }
+
+    public short getSourcePort() {
+        return srcPort;
+    }
+
+    public short getDestPort() {
+        return destPort;
+    }
+
+    public InetAddress getDestination() {
+        return destination;
+    }
+
+    public int getSequence() {
+        return sequenceNum;
+    }
+
+    public int getLastAck() {
+        return lastAck;
+    }
+
+    @Override
+    public String toString() {
+        return "RxpSocket: " + state.name() + " on " + srcPort + " to " + destination.getHostName() + ":" + destPort;
     }
 }

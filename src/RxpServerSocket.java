@@ -8,11 +8,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpServerSocket implements RxpReceiver {
 
-    ConcurrentHashMap<String, RxpSocket> connectedClients;
+    final ConcurrentHashMap<String, RxpSocket> connectedClients;
     final ConcurrentLinkedQueue<RxpSocket> newClients;
     DatagramSocket netEmuSocket;
     short port;
     boolean run;
+
 
     public static final int MTU = 1500;
 
@@ -23,6 +24,7 @@ public class RxpServerSocket implements RxpReceiver {
         connectedClients = new ConcurrentHashMap<>();
         newClients = new ConcurrentLinkedQueue<>();
 
+        /* Start listening for data */
         receiverStart();
     }
 
@@ -34,17 +36,17 @@ public class RxpServerSocket implements RxpReceiver {
                 while (newClients.isEmpty()) {
                     newClients.wait();
                 }
-                System.out.println("ACCEPTED CONNECTION");
                 client = newClients.poll();
+                System.out.println("Accepted: " + client);
 
-                InputStream inputStream = client.getInputStream();
-                OutputStream outputStream = client.getOutputStream();
+                client.waitForConnection();
 
-                // TODO: Do synchronization here
                 connectedClients.put(getKey(client), client);
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
+        } catch (IOException e) {
+            System.err.println(e.getMessage());
         }
         return client;
     }
@@ -61,14 +63,6 @@ public class RxpServerSocket implements RxpReceiver {
             }
         }
         return socket;
-    }
-
-    private static String getKey(RxpSocket socket) {
-        return getKey(socket.destination, socket.destPort);
-    }
-
-    private static String getKey(InetAddress addr, int destPort) {
-        return addr.toString() + ":" + destPort;
     }
 
     @Override
@@ -91,11 +85,16 @@ public class RxpServerSocket implements RxpReceiver {
 
                     RxpSocket socket;
                     if ((socket = connectedClients.get(receivedKey)) != null) {
+                        System.out.println("Packet received on an existing socket: " + receivedKey);
                         socket.receivePacket(packet);
                     } else if ((socket = findNewClientByKey(receivedKey)) != null) {
+                        System.out.println("Packet received on a connecting socket: " + receivedKey);
                         socket.receivePacket(packet);
                     } else {
-                        socket = new RxpSocket(netEmuSocket, datagramPacket.getAddress(), packet.srcPort, RxpServerSocket.this);
+                        System.out.println("Packet received, but no socket exists: " + receivedKey);
+                        socket = new RxpSocket(netEmuSocket, port, RxpServerSocket.this);
+                        socket.attach(datagramPacket.getAddress(), packet.srcPort);
+                        socket.receivePacket(packet);
                         synchronized (newClients) {
                             newClients.add(socket);
                             newClients.notify();
@@ -109,6 +108,15 @@ public class RxpServerSocket implements RxpReceiver {
             }
         }).start();
 
+    }
+
+    private static String getKey(RxpSocket socket) {
+        return getKey(socket.getDestination(), socket.getDestPort());
+    }
+
+    private static String getKey(InetAddress addr, int destPort) {
+        String key = addr.getHostAddress() + ":" + destPort;
+        return key;
     }
 
     public void close() {

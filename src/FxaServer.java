@@ -41,8 +41,7 @@ public class FxaServer {
         RxpServerSocket serverSocket = new RxpServerSocket(netEmu, port);
 
         RxpSocket client = serverSocket.accept();
-        System.out.println("Accepted: " + client.srcPort);
-        String helloMessage = "Hello message!";
+        String helloMessage = "Hello client -Server";
         OutputStream outputStream = client.getOutputStream();
 
         try {

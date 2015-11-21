@@ -34,20 +34,20 @@ public class FxaClient {
 
         DatagramSocket netSock = new DatagramSocket(port);
         netSock.connect(netEmuAddress, netEmuPort);
-        RxpSocket socket = new RxpSocket(netSock, netEmuAddress, (short) (port + 1));
+        RxpSocket socket = new RxpSocket(netSock);
         System.out.println("Created socket");
-        socket.connect();
+        socket.connect(netEmuAddress, (short) (port + 1));
 
         OutputStream outputStream = socket.getOutputStream();
         InputStream inputStream = socket.getInputStream();
 
-        String hello = "Hello message";
+        String hello = "Hello server -Client";
         outputStream.write(hello.getBytes());
 
         int b;
         try {
             while ((b = inputStream.read()) != -1) {
-                System.out.print((byte) b);
+                System.out.print((char) b);
             }
         } catch (IOException e) {
             e.printStackTrace();
