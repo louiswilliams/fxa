@@ -3,13 +3,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
 import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.SynchronousQueue;
 
 public class RxpServerSocket implements RxpReceiver {
 
     final ConcurrentHashMap<String, RxpSocket> connectedClients;
-    final ConcurrentLinkedQueue<RxpSocket> newClients;
+    final LinkedList<RxpSocket> newClients;
     DatagramSocket netEmuSocket;
     short port;
     boolean run;
@@ -22,7 +25,7 @@ public class RxpServerSocket implements RxpReceiver {
         this.netEmuSocket = netEmuSocket;
 
         connectedClients = new ConcurrentHashMap<>();
-        newClients = new ConcurrentLinkedQueue<>();
+        newClients = new LinkedList<>();
 
         /* Start listening for data */
         receiverStart();
@@ -53,11 +56,13 @@ public class RxpServerSocket implements RxpReceiver {
         RxpSocket socket = null;
 
         RxpSocket current;
-        Iterator<RxpSocket> it = newClients.iterator();
-        while (socket == null && it.hasNext()) {
-            current = it.next();
-            if (getKey(current).equals(key)) {
-                socket = current;
+        synchronized (newClients) {
+            Iterator<RxpSocket> it = newClients.iterator();
+            while (socket == null && it.hasNext()) {
+                current = it.next();
+                if (getKey(current).equals(key)) {
+                    socket = current;
+                }
             }
         }
         return socket;

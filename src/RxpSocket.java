@@ -96,7 +96,7 @@ public class RxpSocket implements RxpReceiver {
 
         state = RxpState.LISTEN;
 
-        receiverStart();
+        dataReceiver.receiverStart();
     }
 
     /**
@@ -130,7 +130,7 @@ public class RxpSocket implements RxpReceiver {
                 if (state == RxpState.ESTABLISHED) {
                     System.out.println("Connection established");
                 } else {
-                    System.out.println("Connection closed");
+                    throw new IOException("Connection closed");
                 }
             }
         } catch (InterruptedException e) {
@@ -382,6 +382,7 @@ public class RxpSocket implements RxpReceiver {
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                 } catch (InvalidChecksumException e) {
+                    // TODO: Send nack
                     System.err.println("Dropping packet due to incorrect checksum");
                 }
             }
