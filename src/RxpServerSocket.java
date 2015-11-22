@@ -37,8 +37,6 @@ public class RxpServerSocket implements RxpReceiver {
                     newClients.wait();
                 }
                 client = newClients.poll();
-                System.out.println("Accepted: " + client);
-
                 client.waitForConnection();
 
                 connectedClients.put(getKey(client), client);

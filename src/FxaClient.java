@@ -1,7 +1,5 @@
 import javax.sound.midi.SysexMessage;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
@@ -35,41 +33,37 @@ public class FxaClient {
         DatagramSocket netSock = new DatagramSocket(port);
         netSock.connect(netEmuAddress, netEmuPort);
         RxpSocket socket = new RxpSocket(netSock);
-        System.out.println("Created socket");
         socket.connect(netEmuAddress, (short) (port + 1));
+        System.out.println("Connected!");
 
         OutputStream outputStream = socket.getOutputStream();
-        InputStream inputStream = socket.getInputStream();
+//        PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream));
+//        InputStream inputStream = socket.getInputStream();
 
-        String hello = "Hello server -Client";
-        outputStream.write(hello.getBytes());
-
-        int b;
-        try {
-            while ((b = inputStream.read()) != -1) {
-                System.out.print((char) b);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+        System.out.println("Begin message: ");
+        String line;
+        while (true) {
+            line = sc.nextLine();
+            outputStream.write(line.getBytes());
         }
 
-        while(true){
-            String command = sc.nextLine();
-            String[] parts = command.split(" ");
-            if(command.equals("connect")){
-                //TODO
-            } else if (parts[0].equals("get")){
-                //TODO: download file (parts[1]) from the server (if F exists in the same directory with the FxA-server program)
-            } else if (parts[0].equals("post")){
-                //TODO
-            } else if (parts[0].equals("window")){
-                //TODO
-            } else if (command.equals("disconnect")){
-                //TODO
-                break;
-            } else {
-                System.out.println("Not a valid command.");
-            }
-        }
+//        while(true){
+//            String command = sc.nextLine();
+//            String[] parts = command.split(" ");
+//            if(command.equals("connect")){
+//                //TODO
+//            } else if (parts[0].equals("get")){
+//                //TODO: download file (parts[1]) from the server (if F exists in the same directory with the FxA-server program)
+//            } else if (parts[0].equals("post")){
+//                //TODO
+//            } else if (parts[0].equals("window")){
+//                //TODO
+//            } else if (command.equals("disconnect")){
+//                //TODO
+//                break;
+//            } else {
+//                System.out.println("Not a valid command.");
+//            }
+//        }
     }
 }

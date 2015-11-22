@@ -140,7 +140,7 @@ public class RxpPacket {
         builder.append("fin: " + fin + ", ");
         builder.append("rst: " + rst + ", ");
         builder.append("auth: " + auth + ", ");
-        builder.append("data[" + data.length + "]: " + new String(data));
+        builder.append("data[" + data.length + "]");
 
         return builder.toString();
 

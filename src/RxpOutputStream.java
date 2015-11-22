@@ -28,6 +28,7 @@ public class RxpOutputStream extends OutputStream {
                             buffer.wait();
                         }
                         socket.sendData(buffer, size);
+                        size = 0;
                         buffer.notify();
                         if (flush) {
                             flush = false;

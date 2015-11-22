@@ -1,6 +1,4 @@
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
@@ -41,14 +39,21 @@ public class FxaServer {
         RxpServerSocket serverSocket = new RxpServerSocket(netEmu, port);
 
         RxpSocket client = serverSocket.accept();
-        String helloMessage = "Hello client -Server";
+        System.out.println("Accepted!");
         OutputStream outputStream = client.getOutputStream();
+        InputStream inputStream = client.getInputStream();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 
-        try {
-            outputStream.write(helloMessage.getBytes());
-        } catch (IOException e) {
-            e.printStackTrace();
+        System.out.println("Reading: ");
+        while (true) {
+            try {
+                int b = inputStream.read();
+                System.out.print(String.valueOf((char) b));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
+
 
 //        while(true){
 //            String command = sc.nextLine();
