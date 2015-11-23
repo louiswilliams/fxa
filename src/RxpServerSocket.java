@@ -16,6 +16,7 @@ public class RxpServerSocket implements RxpReceiver {
     DatagramSocket netEmuSocket;
     short port;
     boolean run;
+    private short windowSize;
 
     private final Object newClientLock;
 
@@ -24,6 +25,7 @@ public class RxpServerSocket implements RxpReceiver {
     public RxpServerSocket(DatagramSocket netEmuSocket, short listenPort) throws SocketException, UnknownHostException {
         this.port = listenPort;
         this.netEmuSocket = netEmuSocket;
+        windowSize = 1;
 
         connectedClients = new ConcurrentHashMap<>();
         newClients = new ConcurrentLinkedQueue<>();
@@ -130,5 +132,9 @@ public class RxpServerSocket implements RxpReceiver {
     @Override
     public void receiverStop() {
         run = false;
+    }
+
+    public void setWindowSize(short size){
+        windowSize = size;
     }
 }

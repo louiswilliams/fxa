@@ -31,7 +31,7 @@ public class FxaServer {
         netEmuPort = Short.parseShort(args[2]);
         //TODO: make sure port is valid
 
-        Scanner sc = new Scanner(System.in);
+        Scanner keyboard = new Scanner(System.in);
 
         DatagramSocket netEmu = new DatagramSocket(port);
         netEmu.connect(netEmuAddress, netEmuPort);
@@ -44,28 +44,42 @@ public class FxaServer {
         InputStream inputStream = client.getInputStream();
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
 
-        System.out.println("Reading: ");
-        while (true) {
-            try {
-                int b = inputStream.read();
-                System.out.print(String.valueOf((char) b));
-            } catch (IOException e) {
-                e.printStackTrace();
+//        System.out.println("Reading: ");
+//        while (true) {
+//            try {
+//                int b = inputStream.read();
+//                System.out.print(String.valueOf((char) b));
+//            } catch (IOException e) {
+//                e.printStackTrace();
+//            }
+//        }
+
+
+        while(true) {
+            String command = keyboard.nextLine();
+            String[] parts = command.split(" ");
+
+            if (command.equals("terminate")) {
+                serverSocket.close();
+                break;
+                //TODO: make sure the connection closed correctly at both ends
+            } else if (parts[0].equals("window") && parts.length == 2) {
+                try {
+                    short size = Short.parseShort(parts[1]);
+                    if (size > 0) {
+                        serverSocket.setWindowSize(size);
+                    } else
+                        System.out.println("Window size must be a positive integer.");
+                } catch (NumberFormatException e) {
+                    System.out.println("Not a valid window size.");
+                }
+                //TODO: make sure this works
+            } else {
+                System.out.println("Not a valid command.");
             }
         }
 
-
-//        while(true){
-//            String command = sc.nextLine();
-//            if(command.equals("terminate")){
-//                //TODO
-//                break;
-//            } else if (command.split(" ")[0].equals("window")){
-//                //TODO
-//            } else {
-//                System.out.println("Not a valid command.");
-//            }
-//        }
+        System.exit(0);
     }
 
     private static void exitWithError(String message) {

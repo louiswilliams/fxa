@@ -19,7 +19,7 @@ public class RxpSocket implements RxpReceiver {
 
     private InetAddress destination;
     private int windowStart;
-    private int windowSize;
+    private short windowSize;
     private byte[] buffer;
 
     private int bufferSize;
@@ -68,6 +68,7 @@ public class RxpSocket implements RxpReceiver {
         outputStream = new RxpOutputStream(this);
         dataReceiver = this;
         connectLock = new Object();
+        windowSize = 1;
     }
 
     /**
@@ -158,6 +159,7 @@ public class RxpSocket implements RxpReceiver {
         packet.destPort = destPort;
         packet.acknowledgement = lastAck;
         packet.ack = true;
+        packet.windowSize = windowSize;
         byte[] buffer = packet.getBytes();
 
         sequenceNum += buffer.length;
@@ -217,10 +219,12 @@ public class RxpSocket implements RxpReceiver {
         }
         // Normal, established data packet
         else if (state == RxpState.ESTABLISHED) {
-            if (packet.ack && packet.data.length > 0) {
+            //TODO: just an ack but no data; nack; data
+            if (packet.data.length > 0) {
             /* Write to stream */
                 inputStream.received(packet.data, packet.data.length);
                 sendAck(packet.sequence + packet.data.length);
+                //TODO: review packet and determine what data to send, if any
             }
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin && packet.ack){
@@ -385,7 +389,12 @@ public class RxpSocket implements RxpReceiver {
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                 } catch (InvalidChecksumException e) {
-                    // TODO: Send nack
+                    try{
+                        sendNack();
+                    } catch(IOException exception){
+                        System.err.println(exception.getMessage());
+                    }
+                    // TODO: check if nack is sent correctly
                     System.err.println("Dropping packet due to incorrect checksum");
                 }
             }
@@ -424,5 +433,9 @@ public class RxpSocket implements RxpReceiver {
     @Override
     public String toString() {
         return "RxpSocket= state: " + state.name() + " src: " + srcPort + " dest: " + destination.getHostAddress() + ":" + destPort;
+    }
+
+    public void setWindowSize(short size) {
+        windowSize = size;
     }
 }
