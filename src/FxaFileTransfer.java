@@ -1,16 +1,11 @@
 import java.io.*;
 
-/**
- * Created by Julia on 11/22/15.
- */
 public class FxaFileTransfer {
 
     RxpSocket socket;
 
     private static final String POST_HEADER = "POST";
     private static final String GET_HEADER = "GET";
-
-    private static final String LENGTH_HEADER = "LENGTH";
 
     public FxaFileTransfer(RxpSocket socket) {
         this.socket = socket;
@@ -47,10 +42,6 @@ public class FxaFileTransfer {
         String header = GET_HEADER + " " + fileName + "\n";
         outputStream.write(header.getBytes());
 
-        File file = new File(fileName);
-        FileOutputStream fileOutput = new FileOutputStream(file);
-
-        int fileLength = -1;
         String line = inputStream.readLine();
         String[] splitLine = line.split(" ");
 
@@ -59,17 +50,46 @@ public class FxaFileTransfer {
                 if (!splitLine[2].equalsIgnoreCase(fileName)) {
                     throw new IOException("Receiving wrong file");
                 }
-                fileLength = Integer.parseInt(splitLine[1]);
+                int fileLength = Integer.parseInt(splitLine[1]);
+                receiveFile(fileName, fileLength);
             }
         } else {
             throw new IOException("Received bad header format.");
         }
+    }
+
+    public void receiveFile(String fileName, int length) throws IOException {
+        File file = new File(fileName);
+
+        FileOutputStream fileOutput = new FileOutputStream(file);
+
         byte[] buffer = new byte[1024];
-        int bytesRead = 0;
+        int bytesRead;
         int totalBytesRead = 0;
-        while((bytesRead = socket.getInputStream().read(buffer)) != -1 && totalBytesRead<fileLength){
+        while((bytesRead = socket.getInputStream().read(buffer)) != -1 && totalBytesRead < length){
             totalBytesRead += bytesRead;
             fileOutput.write(buffer, 0, bytesRead);
         }
+    }
+
+    public void serve() {
+        new Thread(() -> {
+            InputStream inputStream = socket.getInputStream();
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            try {
+                String request[] = reader.readLine().split(" ");
+
+                if (request.length == 2 && request[0].equalsIgnoreCase(GET_HEADER)) {
+                    postFile(new File(request[1]));
+                } else if (request.length == 3 && request[0].equalsIgnoreCase(POST_HEADER)) {
+                    receiveFile(request[2], Integer.parseInt(request[1]));
+                } else {
+                    throw new IOException("Bad request");
+                }
+            } catch (IOException e) {
+                    e.printStackTrace();
+            }
+
+        }).start();
     }
 }

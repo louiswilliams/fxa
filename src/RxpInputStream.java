@@ -4,23 +4,33 @@ import java.util.concurrent.ArrayBlockingQueue;
 
 public class RxpInputStream extends InputStream implements DataListener {
 
-    private final ArrayBlockingQueue<Byte> buffer;
+    final private byte buffer[];
+    int cursor;
+    int size;
 
     public RxpInputStream() {
 
-        buffer = new ArrayBlockingQueue<>(100 * RxpSocket.MTU);
+        buffer = new byte[100 * RxpSocket.MTU];
+
     }
 
     @Override
     public int available() {
-        return buffer.size();
+        return size;
     }
 
     @Override
     public int read() throws IOException {
         int b = - 1;
         try {
-            b = buffer.take();
+            synchronized (buffer) {
+                while (size == 0)
+                    buffer.wait();
+
+                b = buffer[cursor++];
+                --size;
+                buffer.notify();
+            }
         } catch (InterruptedException e) {
             e.printStackTrace();
 
@@ -36,7 +46,15 @@ public class RxpInputStream extends InputStream implements DataListener {
     @Override
     public void received(byte data) {
         try {
-            buffer.put(data);
+            synchronized (buffer) {
+                while (size == buffer.length)
+                    buffer.wait();
+
+                cursor = cursor + 1 % buffer.length;
+                buffer[cursor] = data;
+                ++size;
+                buffer.notify();
+            }
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

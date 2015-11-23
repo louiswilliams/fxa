@@ -41,27 +41,6 @@ public class FxaClient {
 
         fileTransfer = new FxaFileTransfer(socket);
 
-//        PrintWriter writer = new PrintWriter(new OutputStreamWriter(outputStream));
-//        InputStream inputStream = socket.getInputStream();
-
-        System.out.println("Begin message: ");
-//        String line;
-//        while (true) {
-//            line = keyboard.nextLine();
-//            outputStream.write(line.getBytes());
-//        }
-
-        new Thread(new Runnable()
-        {
-
-            @Override
-            public void run() {
-                while(true) {
-
-                }
-            }
-        }).start();
-
         while(true){
             String command = keyboard.nextLine();
 
@@ -69,14 +48,14 @@ public class FxaClient {
                 System.out.println("Please enter a command.");
             } else {
                 String[] parts = command.split(" ");
-                if(command.equals("connect")){
+                if(command.equalsIgnoreCase("connect")){
                     socket.connect(netEmuAddress, (short) (port + 1));
                 }
-                else if (parts[0].equals("get") && parts.length == 2){
+                else if (parts[0].equalsIgnoreCase("get") && parts.length == 2){
                     fileTransfer.getFile(parts[1]);
                     //TODO: make sure this works
                 }
-                else if (parts[0].equals("post") && parts.length == 2){
+                else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{
                         fileTransfer.postFile(new File(parts[1]));
                     } catch (NoSuchFileException e){
@@ -84,7 +63,7 @@ public class FxaClient {
                     }
                     //TODO: make sure this works
                 }
-                else if (parts[0].equals("window")&& parts.length == 2){
+                else if (parts[0].equalsIgnoreCase("window")&& parts.length == 2){
                     try{
                         short size = Short.parseShort(parts[1]);
                         if(size>0){
@@ -96,7 +75,7 @@ public class FxaClient {
                     }
                     //TODO: make sure this works
                 }
-                else if (command.equals("disconnect")){
+                else if (command.equalsIgnoreCase("disconnect")){
                     socket.close();
                     break;
                 }

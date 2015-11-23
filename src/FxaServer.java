@@ -38,22 +38,13 @@ public class FxaServer {
 
         RxpServerSocket serverSocket = new RxpServerSocket(netEmu, port);
 
-        RxpSocket client = serverSocket.accept();
-        System.out.println("Accepted!");
-        OutputStream outputStream = client.getOutputStream();
-        InputStream inputStream = client.getInputStream();
-        BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-
-//        System.out.println("Reading: ");
-//        while (true) {
-//            try {
-//                int b = inputStream.read();
-//                System.out.print(String.valueOf((char) b));
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        }
-
+        new Thread(() -> {
+            while (true) {
+                RxpSocket socket = serverSocket.accept();
+                FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
+                fileTransfer.serve();
+            }
+        }).start();
 
         while(true) {
             String command = keyboard.nextLine();
