@@ -12,11 +12,12 @@ import java.util.concurrent.SynchronousQueue;
 public class RxpServerSocket implements RxpReceiver {
 
     final ConcurrentHashMap<String, RxpSocket> connectedClients;
-    final LinkedList<RxpSocket> newClients;
+    final ConcurrentLinkedQueue<RxpSocket> newClients;
     DatagramSocket netEmuSocket;
     short port;
     boolean run;
 
+    private final Object newClientLock;
 
     public static final int MTU = 1500;
 
@@ -25,8 +26,9 @@ public class RxpServerSocket implements RxpReceiver {
         this.netEmuSocket = netEmuSocket;
 
         connectedClients = new ConcurrentHashMap<>();
-        newClients = new LinkedList<>();
+        newClients = new ConcurrentLinkedQueue<>();
 
+        newClientLock = new Object();
         /* Start listening for data */
         receiverStart();
     }
@@ -35,13 +37,14 @@ public class RxpServerSocket implements RxpReceiver {
     public RxpSocket accept() {
         RxpSocket client = null;
         try {
-            synchronized (newClients) {
+            synchronized (newClientLock) {
                 while (newClients.isEmpty()) {
-                    newClients.wait();
+                    newClientLock.wait();
                 }
-                client = newClients.poll();
+                client = newClients.peek();
                 client.waitForConnection();
 
+                newClients.remove(client);
                 connectedClients.put(getKey(client), client);
             }
         } catch (InterruptedException e) {
@@ -56,13 +59,11 @@ public class RxpServerSocket implements RxpReceiver {
         RxpSocket socket = null;
 
         RxpSocket current;
-        synchronized (newClients) {
-            Iterator<RxpSocket> it = newClients.iterator();
-            while (socket == null && it.hasNext()) {
-                current = it.next();
-                if (getKey(current).equals(key)) {
-                    socket = current;
-                }
+        Iterator<RxpSocket> it = newClients.iterator();
+        while (socket == null && it.hasNext()) {
+            current = it.next();
+            if (getKey(current).equals(key)) {
+                socket = current;
             }
         }
         return socket;
@@ -98,9 +99,9 @@ public class RxpServerSocket implements RxpReceiver {
                         socket = new RxpSocket(netEmuSocket, port, RxpServerSocket.this);
                         socket.attach(datagramPacket.getAddress(), packet.srcPort);
                         socket.receivePacket(packet);
-                        synchronized (newClients) {
-                            newClients.add(socket);
-                            newClients.notify();
+                        newClients.add(socket);
+                        synchronized (newClientLock) {
+                            newClientLock.notify();
                         }
                     }
                 } catch (IOException e) {

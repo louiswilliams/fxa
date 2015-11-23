@@ -95,8 +95,6 @@ public class RxpSocket implements RxpReceiver {
         this.destination = dest;
 
         state = RxpState.LISTEN;
-
-        dataReceiver.receiverStart();
     }
 
     /**
@@ -109,6 +107,11 @@ public class RxpSocket implements RxpReceiver {
      */
     public void connect(InetAddress dest, short destPort) throws IOException {
         attach(dest, destPort);
+
+        /* Only start receiving if we are the data receiver */
+        if (dataReceiver  == this) {
+            dataReceiver.receiverStart();
+        }
 
         System.out.println("Connecting");
         sendSyn();
