@@ -17,7 +17,7 @@ public class FxaClient {
         if (args.length != 3)
             throw new IllegalArgumentException("Incorrect number of parameters.");
 
-        if(!isValidPort(Short.parseShort(args[0])))
+        if(!isValidPort(Short.parseShort(args[0])) ||  port%2 == 1)
             throw new IllegalArgumentException("First port number is invalid.");
         else
             port = Short.parseShort(args[0]);
@@ -28,6 +28,7 @@ public class FxaClient {
             e.printStackTrace();
             System.out.println("Unknown host.");
         }
+
         if(!isValidPort(Short.parseShort(args[2])))
             throw new IllegalArgumentException("Second port number is invalid.");
         else
@@ -90,6 +91,6 @@ public class FxaClient {
     }
 
     private static boolean isValidPort(short port){
-        return(port>1 && port<65535 && port%2 == 0);
+        return(port>1 && port<65535);
     }
 }

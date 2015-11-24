@@ -66,23 +66,25 @@ public class FxaFileTransfer {
     public void serve() {
         new Thread(() -> {
             InputStream inputStream = socket.getInputStream();
-            try {
-                synchronized (((RxpInputStream)inputStream).getBuffer()) {
-                    ((RxpInputStream)inputStream).getBuffer().wait();
-                }
+            while(true){
+                try {
+                    synchronized (((RxpInputStream)inputStream).getBuffer()) {
+                        ((RxpInputStream)inputStream).getBuffer().wait();
+                    }
 
-                String[] request = new String(((RxpInputStream)inputStream).getBuffer()).split(" ");
-                if (request.length == 2 && request[0].trim().equalsIgnoreCase(GET_HEADER)) {
-                    postFile(new File("src/" + request[1].trim()));
-                } else if (request.length == 3 && request[0].trim().equalsIgnoreCase(POST_HEADER)) {
-                    receiveFile(request[2].trim(), Integer.parseInt(request[1]));
-                } else {
-                    throw new IOException("Bad request");
+                    String[] request = new String(((RxpInputStream)inputStream).getBuffer()).split(" ");
+                    if (request.length == 2 && request[0].trim().equalsIgnoreCase(GET_HEADER)) {
+                        postFile(new File("src/" + request[1].trim()));
+                    } else if (request.length == 3 && request[0].trim().equalsIgnoreCase(POST_HEADER)) {
+                        receiveFile(request[2].trim(), Integer.parseInt(request[1]));
+                    } else {
+                        throw new IOException("Bad request");
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } catch (InterruptedException e){
+                    e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (InterruptedException e){
-                e.printStackTrace();
             }
 
         }).start();

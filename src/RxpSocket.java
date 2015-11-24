@@ -189,11 +189,12 @@ public class RxpSocket implements RxpReceiver {
         System.out.println("Received (" + state + "): " + packet);
         /* We don't want to write protocol data to the stream */
 
-        if (packet.windowSize > 0) {
-            sendWindowSize = packet.windowSize;
-        }
+        sendWindowSize = packet.windowSize;
 
         // Iterate through send window and remove ack'd packets
+        /*TODO: received nack; check ack number and resend from there on;
+        //TODO: what about if a nack is received in another state other than established?*/
+        //TODO: received ack but the ack is not for the packet we expect (out of order)
 
         // 1. Server: receive a SYN (handshake)
         if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn && !packet.auth){
@@ -296,6 +297,10 @@ public class RxpSocket implements RxpReceiver {
     }
 
     void sendData(byte[] data, int len) throws IOException {
+        //TODO: split up data into packets of size MTU and send only the number that the window allows
+        //TODO: keep track of packets sent and not acked yet; maybe a queue or list of packets
+
+
         RxpPacket packet = new RxpPacket(this);
         byte copy[] = new byte[len];
         System.arraycopy(data, 0, copy, 0, len);
