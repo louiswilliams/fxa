@@ -22,7 +22,7 @@ public class FxaServer {
             throw new IllegalArgumentException("Incorrect parameters");
         }
 
-        if(!isValidPort(Short.parseShort(args[0])))
+        if(!isValidPort(Short.parseShort(args[0])) || port%2 == 0)
             throw new IllegalArgumentException("First port number is invalid.");
         else
             port = Short.parseShort(args[0]);
@@ -89,6 +89,6 @@ public class FxaServer {
     }
 
     private static boolean isValidPort(short port){
-        return(port>1 && port<65535 && port%2 == 1);
+        return(port>1 && port<65535);
     }
 }
