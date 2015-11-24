@@ -1,13 +1,8 @@
-import javax.sound.midi.SysexMessage;
 import java.io.*;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.net.SocketException;
 import java.net.UnknownHostException;
-import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Scanner;
 
 public class FxaClient {
@@ -57,7 +52,7 @@ public class FxaClient {
                 }
                 else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{
-                        fileTransfer.postFile(new File(parts[1]));
+                        fileTransfer.postFile(new File("src/" + parts[1]));
                     } catch (NoSuchFileException e){
                         System.out.println("File not found.");
                     }

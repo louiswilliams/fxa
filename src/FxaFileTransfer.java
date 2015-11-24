@@ -19,7 +19,6 @@ public class FxaFileTransfer {
 
         outputStream.write(header.getBytes());
 
-
         byte buffer[] = new byte[1024];
         int read;
         while ((read = inputStream.read(buffer)) != -1) {
@@ -27,14 +26,6 @@ public class FxaFileTransfer {
         }
     }
 
-
-    /**
-     *
-     *
-     *
-     * @param fileName
-     * @throws IOException
-     */
     public void getFile(String fileName) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         BufferedReader inputStream = new BufferedReader(new InputStreamReader(socket.getInputStream()));
@@ -59,7 +50,7 @@ public class FxaFileTransfer {
     }
 
     public void receiveFile(String fileName, int length) throws IOException {
-        File file = new File(fileName);
+        File file = new File("src/" + fileName);
 
         FileOutputStream fileOutput = new FileOutputStream(file);
 
@@ -75,19 +66,23 @@ public class FxaFileTransfer {
     public void serve() {
         new Thread(() -> {
             InputStream inputStream = socket.getInputStream();
-            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
             try {
-                String request[] = reader.readLine().split(" ");
+                synchronized (((RxpInputStream)inputStream).getBuffer()) {
+                    ((RxpInputStream)inputStream).getBuffer().wait();
+                }
 
-                if (request.length == 2 && request[0].equalsIgnoreCase(GET_HEADER)) {
-                    postFile(new File(request[1]));
-                } else if (request.length == 3 && request[0].equalsIgnoreCase(POST_HEADER)) {
-                    receiveFile(request[2], Integer.parseInt(request[1]));
+                String[] request = new String(((RxpInputStream)inputStream).getBuffer()).split(" ");
+                if (request.length == 2 && request[0].trim().equalsIgnoreCase(GET_HEADER)) {
+                    postFile(new File("src/" + request[1].trim()));
+                } else if (request.length == 3 && request[0].trim().equalsIgnoreCase(POST_HEADER)) {
+                    receiveFile(request[2].trim(), Integer.parseInt(request[1]));
                 } else {
                     throw new IOException("Bad request");
                 }
             } catch (IOException e) {
-                    e.printStackTrace();
+                e.printStackTrace();
+            } catch (InterruptedException e){
+                e.printStackTrace();
             }
 
         }).start();

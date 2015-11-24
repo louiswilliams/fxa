@@ -67,4 +67,8 @@ public class RxpInputStream extends InputStream implements DataListener {
             received(data[i]);
         }
     }
+
+    public byte[] getBuffer(){
+        return buffer;
+    }
 }

@@ -219,10 +219,14 @@ public class RxpSocket implements RxpReceiver {
         }
         // Normal, established data packet
         else if (state == RxpState.ESTABLISHED) {
+            System.out.println("Pickles");
             //TODO: just an ack but no data; nack; data
             if (packet.data.length > 0) {
             /* Write to stream */
+                System.out.println(new String(packet.data));
                 inputStream.received(packet.data, packet.data.length);
+
+                System.out.println(new String(inputStream.getBuffer()));
                 sendAck(packet.sequence + packet.data.length);
                 //TODO: review packet and determine what data to send, if any
             }
@@ -438,4 +442,5 @@ public class RxpSocket implements RxpReceiver {
     public void setWindowSize(short size) {
         windowSize = size;
     }
+
 }

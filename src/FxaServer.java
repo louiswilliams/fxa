@@ -11,6 +11,8 @@ public class FxaServer {
     public static InetAddress netEmuAddress;
     public static short netEmuPort;
 
+    private static FxaFileTransfer fileTransfer;
+
     static final String usage = "FxaServer PORT NET_EMU_ADDRESS NET_EMU_PORT";
 
     public static void main(String[] args) throws SocketException, UnknownHostException {
@@ -42,7 +44,9 @@ public class FxaServer {
             while (true) {
                 RxpSocket socket = serverSocket.accept();
                 FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
+                System.out.println("In thread of FxaServer");
                 fileTransfer.serve();
+                System.out.println("after serve called");
             }
         }).start();
 
