@@ -219,7 +219,6 @@ public class RxpSocket implements RxpReceiver {
         }
         // Normal, established data packet
         else if (state == RxpState.ESTABLISHED) {
-            System.out.println("Pickles");
             //TODO: just an ack but no data; nack; data
             if (packet.data.length > 0) {
             /* Write to stream */

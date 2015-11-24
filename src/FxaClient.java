@@ -15,18 +15,23 @@ public class FxaClient {
     public static void main(String[] args) throws IOException {
 
         if (args.length != 3)
-            throw new IllegalArgumentException("Incorrect parameters");
+            throw new IllegalArgumentException("Incorrect number of parameters.");
 
-        port = Short.parseShort(args[0]);
-        //TODO: make sure port is valid, odd and equal to server port+1
+        if(!isValidPort(Short.parseShort(args[0])))
+            throw new IllegalArgumentException("First port number is invalid.");
+        else
+            port = Short.parseShort(args[0]);
+
         try{
             netEmuAddress = InetAddress.getByName(args[1]);
         } catch (UnknownHostException e){
             e.printStackTrace();
             System.out.println("Unknown host.");
         }
-        netEmuPort = Short.parseShort(args[2]);
-        //TODO: make sure port is valid
+        if(!isValidPort(Short.parseShort(args[2])))
+            throw new IllegalArgumentException("Second port number is invalid.");
+        else
+            netEmuPort = Short.parseShort(args[2]);
 
         Scanner keyboard = new Scanner(System.in);
 
@@ -82,5 +87,9 @@ public class FxaClient {
         }
 
         System.exit(0);
+    }
+
+    private static boolean isValidPort(short port){
+        return(port>1 && port<65535 && port%2 == 0);
     }
 }
