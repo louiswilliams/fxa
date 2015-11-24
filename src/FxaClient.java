@@ -67,7 +67,7 @@ public class FxaClient {
                     try{
                         short size = Short.parseShort(parts[1]);
                         if(size>0){
-                            socket.setWindowSize(size);
+                            socket.setSendWindowSize(size);
                         } else
                             System.out.println("Window size must be a positive integer.");
                     }catch (NumberFormatException e){

@@ -1,11 +1,11 @@
-import javax.xml.crypto.Data;
 import java.io.*;
 import java.net.*;
 import java.util.Arrays;
-import java.util.Objects;
+import java.util.Queue;
 import java.util.Random;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpSocket implements RxpReceiver {
 
@@ -19,7 +19,8 @@ public class RxpSocket implements RxpReceiver {
 
     private InetAddress destination;
     private int windowStart;
-    private short windowSize;
+    private short sendWindowSize;
+    private short recvWindowSize;
     private byte[] buffer;
 
     private int bufferSize;
@@ -40,6 +41,7 @@ public class RxpSocket implements RxpReceiver {
     boolean connected = false;
     final Object connectLock;
 
+    final Queue<RxpPacket> sendWindow;
 
     /**
      * Create a socket with a random source port
@@ -64,11 +66,13 @@ public class RxpSocket implements RxpReceiver {
         rand = new Random();
         sequenceNum = r.nextInt(Integer.MAX_VALUE);
 
+        sendWindow = new ConcurrentLinkedQueue<>();
+
         inputStream = new RxpInputStream();
         outputStream = new RxpOutputStream(this);
         dataReceiver = this;
         connectLock = new Object();
-        windowSize = 1;
+        sendWindowSize = 1;
     }
 
     /**
@@ -159,10 +163,20 @@ public class RxpSocket implements RxpReceiver {
         packet.destPort = destPort;
         packet.acknowledgement = lastAck;
         packet.ack = true;
-        packet.windowSize = windowSize;
+        packet.windowSize = recvWindowSize;
         byte[] buffer = packet.getBytes();
 
-        sequenceNum += buffer.length;
+        sequenceNum += packet.data.length;
+        try {
+            synchronized (sendWindow) {
+                while (sendWindow.size() >= sendWindowSize) {
+                    sendWindow.wait();
+                }
+                sendWindow.add(packet);
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         System.out.println("Sending (" + state + "): " + packet);
 
@@ -175,6 +189,12 @@ public class RxpSocket implements RxpReceiver {
         System.out.println("Received (" + state + "): " + packet);
         /* We don't want to write protocol data to the stream */
 
+        if (packet.windowSize > 0) {
+            sendWindowSize = packet.windowSize;
+        }
+
+        // Iterate through send window and remove ack'd packets
+
         // 1. Server: receive a SYN (handshake)
         if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn && !packet.auth){
             sendAuthenticationRequest(packet.sequence + 1);
@@ -182,7 +202,7 @@ public class RxpSocket implements RxpReceiver {
         // 2. Client: receive a SYN+ACK+AUTH (handshake)
         else if (state == RxpState.SYN_SENT || state == RxpState.AUTH_SENT
                 && packet.syn && packet.ack && packet.auth){
-            receiveAuthenticationRequest(packet.sequence + 1, packet.data);
+            receiveAuthenticationRequest(packet.sequence + packet.data.length, packet.data);
         }
         // 3. Server: receive a ACK+AUTH (handshake), verify MD5 hash
         else if (state == RxpState.AUTH_SENT || state == RxpState.AUTH_SENT_1 && packet.ack && packet.auth) {
@@ -433,13 +453,17 @@ public class RxpSocket implements RxpReceiver {
         return lastAck;
     }
 
+    public short getSendWindowSize() {
+        return this.sendWindowSize;
+    }
+
     @Override
     public String toString() {
         return "RxpSocket= state: " + state.name() + " src: " + srcPort + " dest: " + destination.getHostAddress() + ":" + destPort;
     }
 
-    public void setWindowSize(short size) {
-        windowSize = size;
+    public void setSendWindowSize(short size) {
+        recvWindowSize = size;
     }
 
 }

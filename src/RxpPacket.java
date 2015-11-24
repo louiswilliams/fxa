@@ -56,6 +56,7 @@ public class RxpPacket {
     public RxpPacket(RxpSocket socket) {
         this.srcPort = socket.getSourcePort();
         this.destPort = socket.getDestPort();
+        this.windowSize = socket.getSendWindowSize();
 
         data = new byte[]{};
         sequence = socket.getSequence();

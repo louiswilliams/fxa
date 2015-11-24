@@ -34,10 +34,7 @@ public class FxaServer {
             exitWithError("Unknown host: " + args[1]);
         }
 
-        if(!isValidPort(Short.parseShort(args[2])))
-            throw new IllegalArgumentException("Second port number is invalid.");
-        else
-            netEmuPort = Short.parseShort(args[2]);
+        netEmuPort = Short.parseShort(args[2]);
 
         Scanner keyboard = new Scanner(System.in);
 
