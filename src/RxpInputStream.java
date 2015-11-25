@@ -11,7 +11,6 @@ public class RxpInputStream extends InputStream implements DataListener {
     public RxpInputStream() {
 
         buffer = new byte[100 * RxpSocket.MSS];
-
     }
 
     @Override

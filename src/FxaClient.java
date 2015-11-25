@@ -52,14 +52,18 @@ public class FxaClient {
                     socket.connect(netEmuAddress, (short) (port + 1));
                 }
                 else if (parts[0].equalsIgnoreCase("get") && parts.length == 2){
-                    fileTransfer.getFile(parts[1]);
+                    try {
+                        fileTransfer.getFile(parts[1]);
+                    } catch (IOException e) {
+                        System.err.println("Error: " + e.getMessage());
+                    }
                     //TODO: make sure this works
                 }
                 else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{
                         fileTransfer.postFile(new File("src/" + parts[1]));
-                    } catch (NoSuchFileException e){
-                        System.out.println("File not found.");
+                    } catch (IOException e){
+                        System.err.println("Error: " + e.getMessage());
                     }
                     //TODO: make sure this works
                 }
@@ -68,6 +72,7 @@ public class FxaClient {
                         short size = Short.parseShort(parts[1]);
                         if(size>0){
                             socket.setRecvWindowSize(size);
+                            System.out.println("Client window size set to " + socket.getRecvWindowSize());
                         } else
                             System.out.println("Window size must be a positive integer.");
                     }catch (NumberFormatException e){

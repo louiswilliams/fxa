@@ -65,6 +65,7 @@ public class FxaServer {
                     short size = Short.parseShort(parts[1]);
                     if (size > 0) {
                         serverSocket.setWindowSize(size);
+                        System.out.println("Server window size set to " + serverSocket.getWindowSize());
                     } else
                         System.out.println("Window size must be a positive integer.");
                 } catch (NumberFormatException e) {

@@ -89,7 +89,6 @@ public class RxpServerSocket implements RxpReceiver {
 
                     RxpSocket socket;
                     if ((socket = connectedClients.get(receivedKey)) != null) {
-                        System.out.println("Packet received on an existing socket: " + receivedKey);
                         socket.receivePacket(packet);
                     } else if ((socket = findNewClientByKey(receivedKey)) != null) {
                         System.out.println("Packet received on a connecting socket: " + receivedKey);
@@ -134,5 +133,9 @@ public class RxpServerSocket implements RxpReceiver {
 
     public void setWindowSize(short size){
         windowSize = size;
+    }
+
+    public short getWindowSize(){
+        return windowSize;
     }
 }
