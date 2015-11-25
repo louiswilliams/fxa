@@ -22,10 +22,9 @@ public class FxaServer {
             throw new IllegalArgumentException("Incorrect parameters");
         }
 
-        if(!isValidPort(Short.parseShort(args[0])) || port%2 == 0)
+        port = Short.parseShort(args[0]);
+        if(!isValidPort(port) || port%2 == 0)
             throw new IllegalArgumentException("First port number is invalid.");
-        else
-            port = Short.parseShort(args[0]);
 
         try {
             netEmuAddress = InetAddress.getByName(args[1]);

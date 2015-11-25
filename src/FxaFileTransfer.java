@@ -50,29 +50,35 @@ public class FxaFileTransfer {
     }
 
     public void receiveFile(String fileName, int length) throws IOException {
-        File file = new File("src/" + fileName);
+        File file = new File("download/" + fileName);
 
         FileOutputStream fileOutput = new FileOutputStream(file);
 
         byte[] buffer = new byte[1024];
-        int bytesRead;
+        int bytesRead = 0;
         int totalBytesRead = 0;
-        while((bytesRead = socket.getInputStream().read(buffer)) != -1 && totalBytesRead < length){
-            totalBytesRead += bytesRead;
-            fileOutput.write(buffer, 0, bytesRead);
+        int toRead;
+        while (bytesRead != -1 && totalBytesRead < length) {
+            toRead = Math.min(buffer.length, length - totalBytesRead);
+            bytesRead = socket.getInputStream().read(buffer, 0, toRead);
+
+            if (bytesRead != -1) {
+                totalBytesRead += bytesRead;
+                System.out.println("Read total: " + totalBytesRead);
+                fileOutput.write(buffer, 0, bytesRead);
+            }
         }
     }
 
     public void serve() {
         new Thread(() -> {
-            InputStream inputStream = socket.getInputStream();
+            BufferedReader inputStream = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+
             while(true){
                 try {
-                    synchronized (((RxpInputStream)inputStream).getBuffer()) {
-                        ((RxpInputStream)inputStream).getBuffer().wait();
-                    }
+                    String line = inputStream.readLine();
 
-                    String[] request = new String(((RxpInputStream)inputStream).getBuffer()).split(" ");
+                    String[] request = line.split(" ");
                     if (request.length == 2 && request[0].trim().equalsIgnoreCase(GET_HEADER)) {
                         postFile(new File("src/" + request[1].trim()));
                     } else if (request.length == 3 && request[0].trim().equalsIgnoreCase(POST_HEADER)) {
@@ -81,8 +87,6 @@ public class FxaFileTransfer {
                         throw new IOException("Bad request");
                     }
                 } catch (IOException e) {
-                    e.printStackTrace();
-                } catch (InterruptedException e){
                     e.printStackTrace();
                 }
             }

@@ -1,11 +1,8 @@
 import java.io.*;
 import java.net.*;
-import java.util.Arrays;
-import java.util.Queue;
-import java.util.Random;
+import java.util.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpSocket implements RxpReceiver {
 
@@ -25,7 +22,9 @@ public class RxpSocket implements RxpReceiver {
 
     private int bufferSize;
 
-    public static final int MTU = 1500;
+    public static final int MSS = 1500;
+    public static final int UDP_MAX = 65536;
+
     private RxpState state;
 
     private Random rand;
@@ -66,13 +65,14 @@ public class RxpSocket implements RxpReceiver {
         rand = new Random();
         sequenceNum = r.nextInt(Integer.MAX_VALUE);
 
-        sendWindow = new ConcurrentLinkedQueue<>();
+        sendWindow = new LinkedList<>();
 
         inputStream = new RxpInputStream();
         outputStream = new RxpOutputStream(this);
         dataReceiver = this;
         connectLock = new Object();
         sendWindowSize = 1;
+        recvWindowSize = 1;
     }
 
     /**
@@ -167,15 +167,19 @@ public class RxpSocket implements RxpReceiver {
         byte[] buffer = packet.getBytes();
 
         sequenceNum += packet.data.length;
-        try {
-            synchronized (sendWindow) {
-                while (sendWindow.size() >= sendWindowSize) {
-                    sendWindow.wait();
+        /* No need to keeps acks in the window */
+        if (!isOnlyAck(packet)) {
+            try {
+                synchronized (sendWindow) {
+                    while (sendWindow.size() >= sendWindowSize) {
+                        System.out.printf("Send window is full: %d, waiting...", sendWindowSize);
+                        sendWindow.wait();
+                    }
+                    sendWindow.add(packet);
                 }
-                sendWindow.add(packet);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-        } catch (InterruptedException e) {
-            e.printStackTrace();
         }
 
         System.out.println("Sending (" + state + "): " + packet);
@@ -190,6 +194,28 @@ public class RxpSocket implements RxpReceiver {
         /* We don't want to write protocol data to the stream */
 
         sendWindowSize = packet.windowSize;
+
+        Iterator<RxpPacket> windowIt = sendWindow.iterator();
+        boolean keepRemoving = true;
+        while (windowIt.hasNext() && keepRemoving) {
+            RxpPacket item = windowIt.next();
+            // TODO: Acknowledgement is last byte received. Make that change in report
+            synchronized (sendWindow) {
+                if (item.sequence + item.data.length == packet.acknowledgement) {
+                    windowIt.remove();
+                    keepRemoving = false;
+                    System.out.println("Removing packet from send window: " + item);
+                    sendWindow.notify();
+                } else if (item.sequence + item.data.length < packet.acknowledgement) {
+                    windowIt.remove();
+                    System.out.println("Removing packet from send window: " + item);
+                    sendWindow.notify();
+                } else {
+                    System.err.println("Received old ack: " + packet.acknowledgement);
+                }
+            }
+        }
+
 
         // Iterate through send window and remove ack'd packets
         /*TODO: received nack; check ack number and resend from there on;
@@ -243,11 +269,14 @@ public class RxpSocket implements RxpReceiver {
             //TODO: just an ack but no data; nack; data
             if (packet.data.length > 0) {
             /* Write to stream */
-                System.out.println(new String(packet.data));
                 inputStream.received(packet.data, packet.data.length);
 
-                System.out.println(new String(inputStream.getBuffer()));
-                sendAck(packet.sequence + packet.data.length);
+                /* Only send a lone ack if we have no data to send */
+                if (outputStream.size == 0) {
+                    sendAck(packet.sequence + packet.data.length);
+                } else if (lastAck < packet.sequence + packet.data.length){
+                    lastAck = packet.sequence + packet.data.length;
+                }
                 //TODO: review packet and determine what data to send, if any
             }
         }
@@ -296,17 +325,20 @@ public class RxpSocket implements RxpReceiver {
         sendPacketWithAck(packet, ack);
     }
 
-    void sendData(byte[] data, int len) throws IOException {
+    void sendData(byte[] data, int off, int len) throws IOException {
         //TODO: split up data into packets of size MTU and send only the number that the window allows
         //TODO: keep track of packets sent and not acked yet; maybe a queue or list of packets
 
 
         RxpPacket packet = new RxpPacket(this);
         byte copy[] = new byte[len];
-        System.arraycopy(data, 0, copy, 0, len);
-        System.out.println("Sending data: " + new String(copy));
+        System.arraycopy(data, off, copy, 0, len);
         packet.data = copy;
         sendPacket(packet);
+    }
+
+    void sendData(byte[] data, int len) throws IOException {
+        sendData(data, 0 , len);
     }
 
     void sendDataAndAck(byte[] data) throws IOException {
@@ -402,7 +434,7 @@ public class RxpSocket implements RxpReceiver {
         new Thread(() -> {
             receiverRun = true;
             while (receiverRun) {
-                byte[] buffer = new byte[MTU];
+                byte[] buffer = new byte[RxpSocket.UDP_MAX];
                 DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
                 try {
                     netEmuSocket.receive(datagramPacket);
@@ -432,6 +464,10 @@ public class RxpSocket implements RxpReceiver {
     @Override
     public void receiverStop() {
         receiverRun = false;
+    }
+
+    public boolean isOnlyAck(RxpPacket packet) {
+        return packet.ack && packet.data.length == 0 && !packet.syn && !packet.fin && !packet.auth && !packet.rst;
     }
 
     public RxpState getState() {
@@ -467,7 +503,11 @@ public class RxpSocket implements RxpReceiver {
         return "RxpSocket= state: " + state.name() + " src: " + srcPort + " dest: " + destination.getHostAddress() + ":" + destPort;
     }
 
-    public void setSendWindowSize(short size) {
+    public short getRecvWindowSize() {
+        return recvWindowSize;
+    }
+
+    public void setRecvWindowSize(short size) {
         recvWindowSize = size;
     }
 

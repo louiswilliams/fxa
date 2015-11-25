@@ -17,10 +17,9 @@ public class FxaClient {
         if (args.length != 3)
             throw new IllegalArgumentException("Incorrect number of parameters.");
 
-        if(!isValidPort(Short.parseShort(args[0])) ||  port%2 == 1)
+        port = Short.parseShort(args[0]);
+        if(!isValidPort(port) ||  port%2 == 1)
             throw new IllegalArgumentException("First port number is invalid.");
-        else
-            port = Short.parseShort(args[0]);
 
         try{
             netEmuAddress = InetAddress.getByName(args[1]);
@@ -68,7 +67,7 @@ public class FxaClient {
                     try{
                         short size = Short.parseShort(parts[1]);
                         if(size>0){
-                            socket.setSendWindowSize(size);
+                            socket.setRecvWindowSize(size);
                         } else
                             System.out.println("Window size must be a positive integer.");
                     }catch (NumberFormatException e){

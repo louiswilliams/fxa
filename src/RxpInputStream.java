@@ -10,7 +10,7 @@ public class RxpInputStream extends InputStream implements DataListener {
 
     public RxpInputStream() {
 
-        buffer = new byte[100 * RxpSocket.MTU];
+        buffer = new byte[100 * RxpSocket.MSS];
 
     }
 
@@ -27,7 +27,8 @@ public class RxpInputStream extends InputStream implements DataListener {
                 while (size == 0)
                     buffer.wait();
 
-                b = buffer[cursor++];
+                b = buffer[cursor];
+                cursor = (cursor + 1) % buffer.length;
                 --size;
                 buffer.notify();
             }
@@ -50,8 +51,8 @@ public class RxpInputStream extends InputStream implements DataListener {
                 while (size == buffer.length)
                     buffer.wait();
 
-                cursor = cursor + 1 % buffer.length;
-                buffer[cursor] = data;
+                int i = (cursor + size) % buffer.length;
+                buffer[i] = data;
                 ++size;
                 buffer.notify();
             }
@@ -66,9 +67,5 @@ public class RxpInputStream extends InputStream implements DataListener {
         for (int i = 0; i < len; i++) {
             received(data[i]);
         }
-    }
-
-    public byte[] getBuffer(){
-        return buffer;
     }
 }

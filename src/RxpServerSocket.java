@@ -20,8 +20,6 @@ public class RxpServerSocket implements RxpReceiver {
 
     private final Object newClientLock;
 
-    public static final int MTU = 1500;
-
     public RxpServerSocket(DatagramSocket netEmuSocket, short listenPort) throws SocketException, UnknownHostException {
         this.port = listenPort;
         this.netEmuSocket = netEmuSocket;
@@ -77,7 +75,7 @@ public class RxpServerSocket implements RxpReceiver {
         new Thread(() -> {
             run = true;
             while (run) {
-                byte[] buffer = new byte[MTU];
+                byte[] buffer = new byte[RxpSocket.UDP_MAX];
                 DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
                 try {
                     netEmuSocket.receive(datagramPacket);
