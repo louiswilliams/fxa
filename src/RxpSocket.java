@@ -103,7 +103,7 @@ public class RxpSocket implements RxpReceiver {
      * @param dest Destination address
      * @param destPort Destination port
      */
-    void attach(InetAddress dest, short destPort) {
+    public void attach(InetAddress dest, short destPort) {
         this.destPort = destPort;
         this.destination = dest;
 
@@ -562,19 +562,25 @@ public class RxpSocket implements RxpReceiver {
                 try {
                     netEmuSocket.receive(datagramPacket);
 
-                    RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
+                    RxpPacket packet = null;
+                    try {
+                        packet= new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
+                    } catch (InvalidChecksumException e) {
+                        printDebugErr("Dropping packet due to incorrect checksum");
+                        sendNack(lastAck);
+                    }
 
-                    if (packet.destPort != srcPort) {
-                        printDebugErr("Dropping packet send to wrong port");
-                    } else {
-                        receivePacket(packet);
+                    if (packet != null) {
+                        if (packet.destPort != srcPort) {
+                            printDebugErr("Dropping packet send to wrong port");
+                        } else {
+                            receivePacket(packet);
+                        }
                     }
 
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                     close();
-                } catch (InvalidChecksumException e) {
-                    printDebugErr("Dropping packet due to incorrect checksum");
                 }
             }
         }).start();

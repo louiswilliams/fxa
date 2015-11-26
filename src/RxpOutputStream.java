@@ -157,7 +157,7 @@ public class RxpOutputStream extends OutputStream {
     }
 
     /**
-     * Interrupt the writer and cause it stop running
+     * Interrupt the writer and cause it stop runningvo
      */
     @Override
     public void close() {
