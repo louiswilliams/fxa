@@ -129,6 +129,10 @@ public class RxpPacket {
     @Override
     public String toString() {
         StringBuilder builder = new StringBuilder();
+        String dataSummary = "'" + (new String(data)).substring(0, Math.min(8, data.length)) + "'";
+        if (data.length > 8) {
+            dataSummary += "...";
+        }
         builder.append("RxpPacket= ");
         builder.append("destPort: " + destPort + ", ");
         builder.append("srcPort: " + srcPort + ", ");
@@ -141,7 +145,7 @@ public class RxpPacket {
         builder.append("fin: " + fin + ", ");
         builder.append("rst: " + rst + ", ");
         builder.append("auth: " + auth + ", ");
-        builder.append("data[" + data.length + "]: " + new String(data));
+        builder.append("data[" + data.length + "]: " + dataSummary);
 
         return builder.toString();
 

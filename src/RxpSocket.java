@@ -3,6 +3,7 @@ import java.net.*;
 import java.util.*;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpSocket implements RxpReceiver {
 
@@ -38,6 +39,7 @@ public class RxpSocket implements RxpReceiver {
 
     boolean receiverRun = true;
     boolean connected = false;
+    boolean debugEnabled = true;
     final Object connectLock;
 
     final Queue<RxpPacket> sendWindow;
@@ -65,7 +67,7 @@ public class RxpSocket implements RxpReceiver {
         rand = new Random();
         sequenceNum = r.nextInt(Integer.MAX_VALUE);
 
-        sendWindow = new LinkedList<>();
+        sendWindow = new ConcurrentLinkedQueue<>();
 
         inputStream = new RxpInputStream();
         outputStream = new RxpOutputStream(this);
@@ -118,7 +120,7 @@ public class RxpSocket implements RxpReceiver {
             dataReceiver.receiverStart();
         }
 
-        System.out.println("Connecting");
+        printDebug("Connecting");
         sendSyn();
         waitForConnection();
     }
@@ -136,7 +138,7 @@ public class RxpSocket implements RxpReceiver {
                     connectLock.wait();
                 }
                 if (state == RxpState.ESTABLISHED) {
-                    System.out.println("Connection established");
+                    printDebug("Connection established");
                 } else {
                     throw new IOException("Connection closed");
                 }
@@ -153,8 +155,20 @@ public class RxpSocket implements RxpReceiver {
     }
 
     void sendPacketWithAck(RxpPacket packet, int ack) throws IOException {
+        if (ack == lastAck) {
+
+        }
         lastAck = ack;
         sendPacket(packet);
+    }
+
+    void resendPacket(RxpPacket packet) throws IOException {
+        byte[] buffer = packet.getBytes();
+
+        printDebug("Re-sending (" + state + "): " + packet);
+
+        DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
+        netEmuSocket.send(datagramPacket);
     }
 
     void sendPacket(RxpPacket packet) throws IOException {
@@ -172,7 +186,7 @@ public class RxpSocket implements RxpReceiver {
             try {
                 synchronized (sendWindow) {
                     while (sendWindow.size() >= sendWindowSize) {
-                        System.out.printf("Send window is full: %d, waiting...", sendWindowSize);
+                        printDebug("Send window is full: "  + sendWindowSize + ", waiting...");
                         sendWindow.wait();
                     }
                     sendWindow.add(packet);
@@ -182,7 +196,7 @@ public class RxpSocket implements RxpReceiver {
             }
         }
 
-        System.out.println("Sending (" + state + "): " + packet);
+        printDebug("Sending (" + state + "): " + packet);
 
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
@@ -190,31 +204,31 @@ public class RxpSocket implements RxpReceiver {
 
     void receivePacket(RxpPacket packet) throws IOException {
 
-        System.out.println("Received (" + state + "): " + packet);
+        printDebug("Received (" + state + "): " + packet);
         /* We don't want to write protocol data to the stream */
 
         sendWindowSize = packet.windowSize;
 
         Iterator<RxpPacket> windowIt = sendWindow.iterator();
-        boolean keepRemoving = true;
-        while (windowIt.hasNext() && keepRemoving) {
+
+        while (windowIt.hasNext()) {
             RxpPacket item = windowIt.next();
-            // TODO: Acknowledgement is last byte received. Make that change in report
             synchronized (sendWindow) {
                 if (item.sequence + item.data.length == packet.acknowledgement) {
                     windowIt.remove();
-                    keepRemoving = false;
-//                    System.out.println("Removing packet from send window: " + item);
                     sendWindow.notify();
+                    break;
                 } else if (item.sequence + item.data.length < packet.acknowledgement) {
                     windowIt.remove();
-//                    System.out.println("Removing packet from send window: " + item);
                     sendWindow.notify();
-                } else {
-                    System.err.println("Received old ack: " + packet.acknowledgement);
+                } else if (item.sequence + item.data.length > packet.acknowledgement && packet.nack) {
+                    System.err.println("Received NACK for " + packet.acknowledgement);
+                    resendPacket(item);
                 }
             }
-            System.out.println("Send window: " + sendWindow.size());
+        }
+        if (sendWindow.size() > 0 ) {
+            printDebug("Send window: " + sendWindow.size());
         }
 
 
@@ -268,15 +282,25 @@ public class RxpSocket implements RxpReceiver {
         // Normal, established data packet
         else if (state == RxpState.ESTABLISHED) {
             //TODO: just an ack but no data; nack; data
-            if (packet.data.length > 0) {
-            /* Write to stream */
-                inputStream.received(packet.data, packet.data.length);
 
-                /* Only send a lone ack if we have no data to send */
-                if (outputStream.size == 0) {
-                    sendAck(packet.sequence + packet.data.length);
-                } else if (lastAck < packet.sequence + packet.data.length){
-                    lastAck = packet.sequence + packet.data.length;
+            if (packet.data.length > 0) {
+
+                /* Make sure the sequence what we expect */
+                if (lastAck == packet.sequence){
+                    /* Write to stream */
+                    inputStream.received(packet.data, packet.data.length);
+                    /* Only send a lone ack if we have no data to send */
+                    if (outputStream.getSize() == 0) {
+                        sendAck(packet.sequence + packet.data.length);
+                    } else {
+                        lastAck = packet.sequence + packet.data.length;
+                    }
+                } else if (packet.sequence > lastAck) {
+                    sendNack(lastAck);
+                    System.err.printf("Dropping over-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
+                } else if (packet.sequence < lastAck) {
+                    sendNack(lastAck);
+                    System.err.printf("Dropping under-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
                 }
                 //TODO: review packet and determine what data to send, if any
             }
@@ -330,6 +354,9 @@ public class RxpSocket implements RxpReceiver {
         //TODO: split up data into packets of size MTU and send only the number that the window allows
         //TODO: keep track of packets sent and not acked yet; maybe a queue or list of packets
 
+        if (state == RxpState.CLOSED) {
+            throw new IOException("Cannot send data because socket is closed");
+        }
 
         RxpPacket packet = new RxpPacket(this);
         byte copy[] = new byte[len];
@@ -349,10 +376,10 @@ public class RxpSocket implements RxpReceiver {
         sendPacket(packet);
     }
 
-    void sendNack() throws IOException {
+    void sendNack(int ack) throws IOException {
         RxpPacket packet = new RxpPacket(this);
         packet.nack = true;
-        sendPacket(packet);
+        sendPacketWithAck(packet, ack);
     }
 
     void sendReset() throws IOException {
@@ -450,11 +477,11 @@ public class RxpSocket implements RxpReceiver {
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                 } catch (InvalidChecksumException e) {
-                    try{
-                        sendNack();
-                    } catch(IOException exception){
-                        System.err.println(exception.getMessage());
-                    }
+//                    try{
+//                        sendNack();
+//                    } catch(IOException exception){
+//                        System.err.println(exception.getMessage());
+//                    }
                     // TODO: check if nack is sent correctly
                     System.err.println("Dropping packet due to incorrect checksum");
                 }
@@ -506,6 +533,12 @@ public class RxpSocket implements RxpReceiver {
 
     public short getRecvWindowSize() {
         return recvWindowSize;
+    }
+
+    public void printDebug(String message) {
+        if (debugEnabled) {
+            System.out.println("[RXP] " + message);
+        }
     }
 
     public void setRecvWindowSize(short size) {

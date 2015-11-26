@@ -1,5 +1,6 @@
 import jdk.internal.util.xml.impl.Input;
 
+import javax.sound.midi.SysexMessage;
 import java.io.*;
 
 public class FxaFileTransfer {
@@ -21,17 +22,33 @@ public class FxaFileTransfer {
     public void postFile(File file) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         InputStream inputStream = socket.getInputStream();
-        String header = getRequestHeader(POST_HEADER, String.valueOf(file.length()), file.getName());
+
+        String header;
+        if (file.exists()) {
+            header = getRequestHeader(POST_HEADER, String.valueOf(file.length()), file.getName());
+        } else {
+            throw new FxaProtocolException("File not found: " + file.getName());
+        }
+
         outputStream.write(header.getBytes());
         sendFile(file);
 
         String result = readLine(inputStream);
         String[] split = result.split(" ");
-        if (split.length >= 2) {
-            if (split[0].equalsIgnoreCase(STATUS_ERR)) {
-                throw new FxaProtocolException(result.substring(STATUS_ERR.length()));
-            } else if (!split[0].equalsIgnoreCase(STATUS_OK)) {
-                throw new FxaProtocolException("Invalid status received: " + result);
+        String[] headersplit = result.split(":");
+        if (headersplit.length >= 2) {
+
+            if (split.length >= 2) {
+                if (headersplit[0].equalsIgnoreCase(STATUS_ERR)) {
+                    throw new FxaProtocolException(result.substring(STATUS_ERR.length()));
+                } else if (!headersplit[0].equalsIgnoreCase(STATUS_OK)) {
+                    throw new FxaProtocolException("Invalid status received: " + result);
+                }
+                if (split.length >= 4) {
+                    if (!split[3].equals(file.getName())) {
+                        throw new FxaProtocolException("Server confirmed incorrect filename: " + split[3]);
+                    }
+                }
             }
         }
     }
@@ -77,12 +94,15 @@ public class FxaFileTransfer {
 
     public void respondToGetFile(File file) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
+        String response;
         if (file.exists()) {
-            String response = getResponseHeader(STATUS_OK, GET_HEADER, String.valueOf(file.length()), file.getName());
+            response = getResponseHeader(STATUS_OK, GET_HEADER, String.valueOf(file.length()), file.getName());
+            System.out.println("[FXA] Resp: " + response);
             outputStream.write(response.getBytes());
             sendFile(file);
         } else {
-            String response = getResponseHeader(STATUS_ERR, GET_HEADER, "File '" + file.getName() + "' does not exists");
+            response = getResponseHeader(STATUS_ERR, GET_HEADER, "File '" + file.getName() + "' does not exists");
+            System.out.println("[FXA] Resp: " + response);
             outputStream.write(response.getBytes());
         }
     }
@@ -96,40 +116,54 @@ public class FxaFileTransfer {
         } catch (IOException e) {
             response = getResponseHeader(STATUS_ERR, POST_HEADER, "File could not be received: " + e.getMessage());
         }
+        System.out.println("[FXA] Resp: " + response);
         outputStream.write(response.getBytes());
     }
 
     public void sendFile(File filename) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         FileInputStream inputStream = new FileInputStream(filename);
+        long length = filename.length();
+
+        System.out.println("[FXA] Sending " + filename.getName() + " of " + length + " bytes");
 
         byte buffer[] = new byte[RxpSocket.MSS];
         int read;
+        int totalSent = 0;
         while ((read = inputStream.read(buffer)) != -1) {
             outputStream.write(buffer, 0, read);
+            totalSent += read;
+            System.out.print("[FXA] Sent " + 100 * (totalSent / (float) length) + "%\n");
         }
+        System.out.println("\n[FXA] File send complete");
     }
 
     public File receiveFile(String fileName, int length) throws IOException {
         makeDownloadDir();
         File file = new File(DOWLOAD_DIR + "/" + fileName);
 
+        System.out.println("[FXA] Receiving " + fileName + " of " + length + " bytes");
+
         FileOutputStream fileOutput = new FileOutputStream(file);
 
-        byte[] buffer = new byte[1024];
+        byte[] buffer = new byte[RxpSocket.MSS];
         int bytesRead = 0;
         int totalBytesRead = 0;
         int toRead;
-        while (bytesRead != -1 && totalBytesRead < length) {
+        while (totalBytesRead < length) {
             toRead = Math.min(buffer.length, length - totalBytesRead);
             bytesRead = socket.getInputStream().read(buffer, 0, toRead);
 
             if (bytesRead != -1) {
                 totalBytesRead += bytesRead;
                 fileOutput.write(buffer, 0, bytesRead);
+            } else {
+                break;
             }
+            System.out.print("[FXA] Received " + 100 * (totalBytesRead / (float) length) + "%\n");
         }
-        System.out.println("Read " + totalBytesRead + " bytes");
+        fileOutput.close();
+        System.out.println("\n[FXA] File receive completed (" + totalBytesRead + " bytes)");
         return file;
     }
 
@@ -142,6 +176,7 @@ public class FxaFileTransfer {
                     String line = readLine(inputStream);
 
                     String[] request = line.split(" ");
+                    System.out.println("[FXA] Req:  " + line);
                     if (request.length == 2 && request[0].trim().equalsIgnoreCase(GET_HEADER)) {
                         respondToGetFile(new File("src/" + request[1].trim()));
                     } else if (request.length == 3 && request[0].trim().equalsIgnoreCase(POST_HEADER)) {

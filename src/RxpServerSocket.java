@@ -1,13 +1,8 @@
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.net.*;
 import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.SynchronousQueue;
 
 public class RxpServerSocket implements RxpReceiver {
 
@@ -74,6 +69,7 @@ public class RxpServerSocket implements RxpReceiver {
         /* Data reception loop */
         new Thread(() -> {
             run = true;
+            System.out.println("Listening on (ip_addr:udp_port:rxp_port)" + netEmuSocket.getLocalAddress().getHostAddress() + ":" + netEmuSocket.getLocalPort() + ":" + port);
             while (run) {
                 byte[] buffer = new byte[RxpSocket.UDP_MAX];
                 DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
@@ -81,10 +77,9 @@ public class RxpServerSocket implements RxpReceiver {
                     netEmuSocket.receive(datagramPacket);
                     RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
                     String receivedKey = getKey(datagramPacket.getAddress(), packet.srcPort);
-                    System.out.println("Received from " + receivedKey);
 
                     if (packet.destPort != port) {
-                        throw new IOException("Received on wrong port!");
+                        throw new IOException("Received on wrong port: " + packet.destPort);
                     }
 
                     RxpSocket socket;
@@ -94,7 +89,7 @@ public class RxpServerSocket implements RxpReceiver {
                         System.out.println("Packet received on a connecting socket: " + receivedKey);
                         socket.receivePacket(packet);
                     } else {
-                        System.out.println("Packet received, but no socket exists: " + receivedKey);
+                        System.out.println("Creating client socket for " + receivedKey);
                         socket = new RxpSocket(netEmuSocket, port, RxpServerSocket.this);
                         socket.attach(datagramPacket.getAddress(), packet.srcPort);
                         socket.receivePacket(packet);

@@ -1,6 +1,5 @@
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.concurrent.ArrayBlockingQueue;
 
 public class RxpInputStream extends InputStream implements DataListener {
 
@@ -23,10 +22,12 @@ public class RxpInputStream extends InputStream implements DataListener {
         int b = - 1;
         try {
             synchronized (buffer) {
-                while (size == 0)
+                while (size == 0) {
+                    System.out.println("InputStream buffer is empty, waiting for data to be added");
                     buffer.wait();
+                }
 
-                b = buffer[cursor];
+                b = ((int)buffer[cursor]) & 0xFF; // Convert to a signed value
                 cursor = (cursor + 1) % buffer.length;
                 --size;
                 buffer.notify();
@@ -47,8 +48,10 @@ public class RxpInputStream extends InputStream implements DataListener {
     public void received(byte data) {
         try {
             synchronized (buffer) {
-                while (size == buffer.length)
+                while (size == buffer.length) {
+//                    System.out.println("InputStream buffer is full, waiting for data to be read");
                     buffer.wait();
+                }
 
                 int i = (cursor + size) % buffer.length;
                 buffer[i] = data;

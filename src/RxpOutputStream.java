@@ -21,23 +21,25 @@ public class RxpOutputStream extends OutputStream {
             run = true;
             while (run) {
                 try {
+                    byte[] output;
                     synchronized (buffer) {
                         /* Wait to fill a MSS or flush is called */
                         while (size < RxpSocket.MSS && !flush) {
+                            System.out.println("OutputStream buffer has not reached MSS and flush has not been called, waiting");
                             buffer.wait();
                         }
                         int datalen = Math.min(size, RxpSocket.MSS);
 
+                        output = new byte[datalen];
+
                         if (start + size > buffer.length) {
-                            byte[] output = new byte[datalen];
                             int j = start;
                             for (int i = 0; i < datalen; i++) {
                                 output[i] = buffer[j];
                                 j = (j + 1) % buffer.length;
                             }
-                            socket.sendData(output, datalen);
                         } else {
-                            socket.sendData(buffer, start, datalen);
+                            System.arraycopy(buffer, start, output, 0, datalen);
                         }
 
                         /* Keep sending until no data left*/
@@ -48,8 +50,11 @@ public class RxpOutputStream extends OutputStream {
                         size -= datalen;
                         buffer.notify();
                     }
+                    socket.sendData(output, output.length);
+
                 } catch (InterruptedException | IOException e) {
                     e.printStackTrace();
+                    run = false;
                 }
             }
         });
@@ -57,13 +62,25 @@ public class RxpOutputStream extends OutputStream {
         writer.start();
     }
 
+    public int getSize() {
+        int size;
+        synchronized (buffer) {
+            size = this.size;
+        }
+        return size;
+    }
+
     @Override
     public void write(int in) throws IOException {
         byte b = (byte) (in & 0xff); // Only read the lower 8 bits
 
+        if (socket.getState() == RxpState.CLOSED || !run) {
+            throw new IOException("Cannot write because socket is closed");
+        }
         try {
             synchronized (buffer) {
                 while (size == buffer.length) {
+                    System.out.println("OutputStream buffer is full, waiting for data to be sent");
                     buffer.wait();
                 }
                 int i = (start + size) % buffer.length;

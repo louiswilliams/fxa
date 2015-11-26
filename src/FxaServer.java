@@ -46,9 +46,7 @@ public class FxaServer {
             while (true) {
                 RxpSocket socket = serverSocket.accept();
                 FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
-                System.out.println("In thread of FxaServer");
                 fileTransfer.serve();
-                System.out.println("after serve called");
             }
         }).start();
 
