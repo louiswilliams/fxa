@@ -1,6 +1,11 @@
+/**
+ * RxpOutputStream
+ *
+ * Buffers data from the client socket and writes out to the socket when enough data has been written or flush() has
+ * been called
+ */
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpOutputStream extends OutputStream {
 
@@ -12,10 +17,24 @@ public class RxpOutputStream extends OutputStream {
     boolean flush;
     Thread writer;
 
+    /**
+     * Create an RxpOutputStream for the given socket, which data will be written to. The buffer size will be one MSS
+     *
+     * @param socket Socket to write data to
+     */
     public RxpOutputStream(RxpSocket socket) {
         this(socket, RxpSocket.MSS);
     }
 
+    /**
+     * Create an RxpOutputStream for a socket with a given capacity in bytes.
+     *
+     * When the buffer size has reached one MSS, an MSS of data is sent to the socket.
+     * If flush() has been called, data will be sent in blocks of at most one MSS until the buffer has emptied.
+     *
+     * @param socket Socket to send data to
+     * @param capacity Capacity, in bytes, of the buffer
+     */
     public RxpOutputStream(RxpSocket socket, int capacity) {
         this.socket = socket;
 
@@ -64,6 +83,11 @@ public class RxpOutputStream extends OutputStream {
         writer.start();
     }
 
+    /**
+     * Get the buffer size
+     *
+     * @return Number of bytes in the buffer
+     */
     public int getSize() {
         int size;
         synchronized (buffer) {
@@ -72,6 +96,13 @@ public class RxpOutputStream extends OutputStream {
         return size;
     }
 
+    /**
+     * Write one byte to the output stream. Blocks if the buffer is full, and triggers a write out to the socket
+     * if the size reaches one MSS
+     *
+     * @param in Byte of data
+     * @throws IOException Thrown if the connection has been closed
+     */
     @Override
     public void write(int in) throws IOException {
         byte b = (byte) (in & 0xff); // Only read the lower 8 bits
@@ -96,6 +127,14 @@ public class RxpOutputStream extends OutputStream {
         }
     }
 
+    /**
+     * Write len bytes from b starting from off. Implicitly calls flush() to the data can be written out faster.
+     *
+     * @param b Byte array of data
+     * @param off Start offset to write
+     * @param len Length of data to write
+     * @throws IOException Thrown if the connection has been closed
+     */
     @Override
     public void write(byte b[], int off, int len) throws IOException {
         for (int i = off; i < len; i++) {
@@ -104,6 +143,11 @@ public class RxpOutputStream extends OutputStream {
         flush();
     }
 
+    /**
+     * Request data to be written out to the socket even if the buffer size has not reached one MSS. If the buffer size
+     * is greater than one MSS, the entire buffer is sent until it is empty.
+     *
+     */
     @Override
     public void flush() {
         synchronized (buffer) {
@@ -112,6 +156,9 @@ public class RxpOutputStream extends OutputStream {
         }
     }
 
+    /**
+     * Interrupt the writer and cause it stop running
+     */
     @Override
     public void close() {
         writer.interrupt();

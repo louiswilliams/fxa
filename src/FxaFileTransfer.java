@@ -19,6 +19,12 @@ public class FxaFileTransfer {
         this.socket = socket;
     }
 
+    /**
+     * Post a file to a remote host
+     *
+     * @param file File to send
+     * @throws IOException Thrown if file does not exist or from connection problems
+     */
     public void postFile(File file) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         InputStream inputStream = socket.getInputStream();
@@ -53,6 +59,12 @@ public class FxaFileTransfer {
         }
     }
 
+    /**
+     * Request file from remote host
+     *
+     * @param fileName File request
+     * @throws IOException Thrown if there are connection problems
+     */
     public void getFile(String fileName) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         InputStream inputStream = socket.getInputStream();
@@ -92,6 +104,12 @@ public class FxaFileTransfer {
         }
     }
 
+    /**
+     * Respond to a request to get a file
+     *
+     * @param file File requested
+     * @throws IOException Thrown from connection problems
+     */
     public void respondToGetFile(File file) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         String response;
@@ -107,6 +125,13 @@ public class FxaFileTransfer {
         }
     }
 
+    /**
+     * Respond to a request to post a file
+     *
+     * @param file File being sent
+     * @param len Size of file, in bytes
+     * @throws IOException Thrown if there are connection issues
+     */
     public void respondToPostFile(String file, int len) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         String response;
@@ -120,6 +145,12 @@ public class FxaFileTransfer {
         outputStream.write(response.getBytes());
     }
 
+    /**
+     * Send a file to a remote host
+     *
+     * @param filename File to send
+     * @throws IOException Thrown if there are connection issues
+     */
     public void sendFile(File filename) throws IOException {
         OutputStream outputStream = socket.getOutputStream();
         FileInputStream inputStream = new FileInputStream(filename);
@@ -142,6 +173,14 @@ public class FxaFileTransfer {
         System.out.println("\n[FXA] File send complete");
     }
 
+    /**
+     * Receive file from remote host
+     *
+     * @param fileName Name of file being transferred
+     * @param length Size of file, in bytes
+     * @return File successfully received
+     * @throws IOException Throw if there are connection issues
+     */
     public File receiveFile(String fileName, int length) throws IOException {
         makeDownloadDir();
         File file = new File(DOWLOAD_DIR + "/" + fileName);
@@ -175,6 +214,9 @@ public class FxaFileTransfer {
         return file;
     }
 
+    /**
+     * Begin handling requests for a socket
+     */
     public void serve() {
         new Thread(() -> {
             InputStream inputStream = socket.getInputStream();
@@ -212,6 +254,13 @@ public class FxaFileTransfer {
         return method + " " + String.join(" ", args) + "\n";
     }
 
+    /**
+     * Read from an block on an input stream until a newline character is sent
+     *
+     * @param stream InputStream to read from
+     * @return Line read, not including the newline character
+     * @throws IOException
+     */
     public static String readLine(InputStream stream) throws IOException {
         byte buffer[] = new byte[RxpSocket.UDP_MAX];
         int i = 0;
