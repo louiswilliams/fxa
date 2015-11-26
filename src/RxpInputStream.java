@@ -6,6 +6,7 @@ public class RxpInputStream extends InputStream implements DataListener {
     final private byte buffer[];
     int cursor;
     int size;
+    boolean closed;
 
     public RxpInputStream() {
 
@@ -23,9 +24,12 @@ public class RxpInputStream extends InputStream implements DataListener {
         try {
             synchronized (buffer) {
                 while (size == 0) {
-                    System.out.println("InputStream buffer is empty, waiting for data to be added");
                     buffer.wait();
+                    if (closed) {
+                        throw new IOException("Socket closed");
+                    }
                 }
+
 
                 b = ((int)buffer[cursor]) & 0xFF; // Convert to a signed value
                 cursor = (cursor + 1) % buffer.length;
@@ -34,23 +38,27 @@ public class RxpInputStream extends InputStream implements DataListener {
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
-
         }
         return b;
     }
 
     @Override
     public void close() {
-//        protocol.removeInputStreamListener(socket);
+        closed = true;
+        synchronized (buffer) {
+            buffer.notify();
+        }
     }
 
     @Override
-    public void received(byte data) {
+    public void received(byte data) throws IOException {
         try {
             synchronized (buffer) {
                 while (size == buffer.length) {
-//                    System.out.println("InputStream buffer is full, waiting for data to be read");
                     buffer.wait();
+                    if (closed) {
+                        throw new IOException("Socket closed");
+                    }
                 }
 
                 int i = (cursor + size) % buffer.length;
@@ -65,7 +73,7 @@ public class RxpInputStream extends InputStream implements DataListener {
 
     /* Data listener */
     @Override
-    public void received(byte[] data, int len) {
+    public void received(byte[] data, int len) throws IOException {
         for (int i = 0; i < len; i++) {
             received(data[i]);
         }

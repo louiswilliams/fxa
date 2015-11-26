@@ -133,7 +133,11 @@ public class FxaFileTransfer {
         while ((read = inputStream.read(buffer)) != -1) {
             outputStream.write(buffer, 0, read);
             totalSent += read;
-            System.out.print("[FXA] Sent " + 100 * (totalSent / (float) length) + "%\n");
+            if (socket.debugEnabled) {
+                System.out.print("[FXA] Sent " + 100 * (totalSent / (float) length) + "%\n");
+            } else {
+                System.out.print("[FXA] Sent " + 100 * (totalSent / (float) length) + "%\r");
+            }
         }
         System.out.println("\n[FXA] File send complete");
     }
@@ -160,7 +164,11 @@ public class FxaFileTransfer {
             } else {
                 break;
             }
-            System.out.print("[FXA] Received " + 100 * (totalBytesRead / (float) length) + "%\n");
+            if (socket.debugEnabled) {
+                System.out.print("[FXA] Received " + 100 * (totalBytesRead / (float) length) + "%\n");
+            } else {
+                System.out.print("[FXA] Received " + 100 * (totalBytesRead / (float) length) + "%\r");
+            }
         }
         fileOutput.close();
         System.out.println("\n[FXA] File receive completed (" + totalBytesRead + " bytes)");
@@ -185,7 +193,7 @@ public class FxaFileTransfer {
                         throw new IOException("Bad request");
                     }
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    System.err.println(e.getMessage());
                 }
             }
 

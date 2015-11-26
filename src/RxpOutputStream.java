@@ -25,7 +25,6 @@ public class RxpOutputStream extends OutputStream {
                     synchronized (buffer) {
                         /* Wait to fill a MSS or flush is called */
                         while (size < RxpSocket.MSS && !flush) {
-                            System.out.println("OutputStream buffer has not reached MSS and flush has not been called, waiting");
                             buffer.wait();
                         }
                         int datalen = Math.min(size, RxpSocket.MSS);
@@ -53,7 +52,6 @@ public class RxpOutputStream extends OutputStream {
                     socket.sendData(output, output.length);
 
                 } catch (InterruptedException | IOException e) {
-                    e.printStackTrace();
                     run = false;
                 }
             }
@@ -80,7 +78,6 @@ public class RxpOutputStream extends OutputStream {
         try {
             synchronized (buffer) {
                 while (size == buffer.length) {
-                    System.out.println("OutputStream buffer is full, waiting for data to be sent");
                     buffer.wait();
                 }
                 int i = (start + size) % buffer.length;
@@ -113,6 +110,6 @@ public class RxpOutputStream extends OutputStream {
 
     @Override
     public void close() {
-        run = false;
+        writer.interrupt();
     }
 }

@@ -16,15 +16,14 @@ public class RxpSocket implements RxpReceiver {
     private int sequenceNum;
 
     private InetAddress destination;
-    private int windowStart;
     private short sendWindowSize;
     private short recvWindowSize;
-    private byte[] buffer;
-
-    private int bufferSize;
 
     public static final int MSS = 1500;
     public static final int UDP_MAX = 65536;
+    public static final int RECV_TIMEOUT = 1500;
+    public static final int SOCK_TIMEOUT = 15000;
+
 
     private RxpState state;
 
@@ -34,13 +33,15 @@ public class RxpSocket implements RxpReceiver {
     private RxpInputStream inputStream;
     private RxpOutputStream outputStream;
 
-    RxpServerSocket serverSocket;
+    long lastSendTime;
+    long lastRecvTime;
+
     RxpReceiver dataReceiver;
 
     boolean receiverRun = true;
-    boolean connected = false;
     boolean debugEnabled = true;
     final Object connectLock;
+    final Object timeoutLock;
 
     final Queue<RxpPacket> sendWindow;
 
@@ -73,6 +74,7 @@ public class RxpSocket implements RxpReceiver {
         outputStream = new RxpOutputStream(this);
         dataReceiver = this;
         connectLock = new Object();
+        timeoutLock = new Object();
         sendWindowSize = 1;
         recvWindowSize = 1;
     }
@@ -102,6 +104,39 @@ public class RxpSocket implements RxpReceiver {
         this.destination = dest;
 
         state = RxpState.LISTEN;
+
+        /* Start the timer here */
+        updateLastReceived();
+
+        new Thread(() -> {
+            long recvDiff = 0;
+            do {
+                synchronized (timeoutLock) {
+                    recvDiff = System.currentTimeMillis() - lastRecvTime;
+                    if (recvDiff >= SOCK_TIMEOUT) {
+                        System.err.println("Socket inactive, timing out.");
+                        close();
+                        return;
+                    } else if (sendWindow.size() > 0 && recvDiff >= RECV_TIMEOUT) {
+                        try {
+                            resendWindow();
+                            recvDiff = 0;
+                        } catch (IOException e) {
+                            close();
+                            return;
+                        }
+                    } else {
+                        recvDiff = 0;
+                    }
+                }
+                try {
+                    Thread.sleep(RECV_TIMEOUT - recvDiff);
+                } catch (InterruptedException e){
+                    e.printStackTrace();
+                    break;
+                }
+            } while (true);
+        }).start();
     }
 
     /**
@@ -155,20 +190,26 @@ public class RxpSocket implements RxpReceiver {
     }
 
     void sendPacketWithAck(RxpPacket packet, int ack) throws IOException {
-        if (ack == lastAck) {
-
-        }
         lastAck = ack;
         sendPacket(packet);
     }
 
     void resendPacket(RxpPacket packet) throws IOException {
+        packet.acknowledgement = lastAck;
         byte[] buffer = packet.getBytes();
 
         printDebug("Re-sending (" + state + "): " + packet);
 
+        updateLastSent();
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
+    }
+
+    void resendWindow() throws IOException {
+        printDebugErr("Resending window of " + sendWindow.size() + " packets");
+        for (RxpPacket aSendWindow : sendWindow) {
+            resendPacket(aSendWindow);
+        }
     }
 
     void sendPacket(RxpPacket packet) throws IOException {
@@ -190,14 +231,14 @@ public class RxpSocket implements RxpReceiver {
                         sendWindow.wait();
                     }
                     sendWindow.add(packet);
+                    updateLastSent();
                 }
             } catch (InterruptedException e) {
-                e.printStackTrace();
+//                e.printStackTrace();
             }
         }
 
         printDebug("Sending (" + state + "): " + packet);
-
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
     }
@@ -207,6 +248,7 @@ public class RxpSocket implements RxpReceiver {
         printDebug("Received (" + state + "): " + packet);
         /* We don't want to write protocol data to the stream */
 
+        updateLastReceived();
         sendWindowSize = packet.windowSize;
 
         Iterator<RxpPacket> windowIt = sendWindow.iterator();
@@ -222,7 +264,7 @@ public class RxpSocket implements RxpReceiver {
                     windowIt.remove();
                     sendWindow.notify();
                 } else if (item.sequence + item.data.length > packet.acknowledgement && packet.nack) {
-                    System.err.println("Received NACK for " + packet.acknowledgement);
+                    printDebugErr("Received NACK for " + packet.acknowledgement);
                     resendPacket(item);
                 }
             }
@@ -296,11 +338,11 @@ public class RxpSocket implements RxpReceiver {
                         lastAck = packet.sequence + packet.data.length;
                     }
                 } else if (packet.sequence > lastAck) {
-                    sendNack(lastAck);
                     System.err.printf("Dropping over-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
-                } else if (packet.sequence < lastAck) {
                     sendNack(lastAck);
+                } else if (packet.sequence < lastAck) {
                     System.err.printf("Dropping under-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
+                    sendAck(lastAck);
                 }
                 //TODO: review packet and determine what data to send, if any
             }
@@ -442,7 +484,7 @@ public class RxpSocket implements RxpReceiver {
             MessageDigest md = MessageDigest.getInstance("MD5");
             digest = md.digest(challenge);
         }catch(NoSuchAlgorithmException e) {
-            System.err.println(e.getMessage());
+            printDebugErr(e.getMessage());
         }
         return digest;
     }
@@ -475,15 +517,15 @@ public class RxpSocket implements RxpReceiver {
 
                     receivePacket(packet);
                 } catch (IOException e) {
-                    System.err.println(e.getMessage());
+                    printDebugErr(e.getMessage());
                 } catch (InvalidChecksumException e) {
 //                    try{
 //                        sendNack();
 //                    } catch(IOException exception){
-//                        System.err.println(exception.getMessage());
+//                        printDebugErr(exception.getMessage());
 //                    }
                     // TODO: check if nack is sent correctly
-                    System.err.println("Dropping packet due to incorrect checksum");
+                    printDebugErr("Dropping packet due to incorrect checksum");
                 }
             }
         }).start();
@@ -495,7 +537,7 @@ public class RxpSocket implements RxpReceiver {
     }
 
     public boolean isOnlyAck(RxpPacket packet) {
-        return packet.ack && packet.data.length == 0 && !packet.syn && !packet.fin && !packet.auth && !packet.rst;
+        return (packet.ack || packet.nack) && packet.data.length == 0 && !packet.syn && !packet.fin && !packet.auth && !packet.rst;
     }
 
     public RxpState getState() {
@@ -541,6 +583,23 @@ public class RxpSocket implements RxpReceiver {
         }
     }
 
+    public void printDebugErr(String message) {
+        if (debugEnabled) {
+            System.err.println("[RXP] " + message);
+        }
+    }
+
+    private void updateLastSent() {
+        synchronized (timeoutLock) {
+            lastSendTime = System.currentTimeMillis();
+        }
+    }
+
+    private void updateLastReceived() {
+        synchronized (timeoutLock) {
+            lastRecvTime= System.currentTimeMillis();
+        }
+    }
     public void setRecvWindowSize(short size) {
         recvWindowSize = size;
     }
