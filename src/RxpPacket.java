@@ -1,6 +1,7 @@
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 public class RxpPacket {
 
@@ -86,9 +87,7 @@ public class RxpPacket {
         }
 
         checksum = computeHash(packet, length);
-        for (int i = 0; i < checksum.length; i++) {
-            checksum[i] = buffer.get(16 + i);
-        }
+
         boolean equal = true;
         for (int i = 0; i < checksum.length && equal; i++) {
             equal = checksum[i] == buffer.get(16 + i);
@@ -133,7 +132,6 @@ public class RxpPacket {
         if (data.length > 8) {
             dataSummary += "...";
         }
-        String check[] = {String.valueOf(0xff & (int)checksum[0]), String.valueOf(0xff &(int)checksum[1]), String.valueOf(0xff &(int)checksum[2]), String.valueOf(0xff &(int)checksum[3])};
         builder.append("RxpPacket= ");
         builder.append("destPort: " + destPort + ", ");
         builder.append("srcPort: " + srcPort + ", ");
@@ -146,10 +144,37 @@ public class RxpPacket {
         builder.append("fin: " + fin + ", ");
         builder.append("rst: " + rst + ", ");
         builder.append("auth: " + auth + ", ");
-        builder.append("checksum: " + String.join("/", check));
         builder.append("data[" + data.length + "]: " + dataSummary);
 
         return builder.toString();
 
     }
+
+    @Override
+    public boolean equals(Object other) {
+        if (other instanceof RxpPacket) {
+            boolean equals;
+            RxpPacket packet = (RxpPacket) other;
+
+            equals = srcPort == packet.srcPort;
+            equals &= destPort == packet.destPort;
+            equals &= windowSize == packet.windowSize;
+            equals &= sequence == packet.sequence;
+            equals &= acknowledgement == packet.acknowledgement;
+            equals &= ack == packet.ack;
+            equals &= nack == packet.nack;
+            equals &= syn == packet.syn;
+            equals &= fin == packet.fin;
+            equals &= rst == packet.rst;
+            equals &= auth == packet.auth;
+
+            equals &= Arrays.equals(data, packet.data);
+            equals &= Arrays.equals(checksum, packet.checksum);
+
+            return equals;
+        } else {
+            return false;
+        }
+    }
+
 }

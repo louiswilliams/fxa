@@ -13,9 +13,13 @@ public class RxpOutputStream extends OutputStream {
     Thread writer;
 
     public RxpOutputStream(RxpSocket socket) {
+        this(socket, RxpSocket.MSS);
+    }
+
+    public RxpOutputStream(RxpSocket socket, int capacity) {
         this.socket = socket;
 
-        buffer = new byte[100 * RxpSocket.MSS];
+        buffer = new byte[capacity];
 
         writer = new Thread(() -> {
             run = true;

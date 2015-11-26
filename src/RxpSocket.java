@@ -39,7 +39,7 @@ public class RxpSocket implements RxpReceiver {
     RxpReceiver dataReceiver;
 
     boolean receiverRun = true;
-    boolean debugEnabled = true;
+    boolean debugEnabled = false;
     final Object connectLock;
     final Object timeoutLock;
 
@@ -70,8 +70,8 @@ public class RxpSocket implements RxpReceiver {
 
         sendWindow = new ConcurrentLinkedQueue<>();
 
-        inputStream = new RxpInputStream();
-        outputStream = new RxpOutputStream(this);
+        inputStream = new RxpInputStream(10 * MSS);
+        outputStream = new RxpOutputStream(this, 10 * MSS);
         dataReceiver = this;
         connectLock = new Object();
         timeoutLock = new Object();
@@ -511,10 +511,11 @@ public class RxpSocket implements RxpReceiver {
                     RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
 
                     if (packet.destPort != srcPort) {
-//                        throw new IOException("Received on wrong port!");
+                        printDebugErr("Dropping packet send to wrong port");
+                    } else {
+                        receivePacket(packet);
                     }
 
-                    receivePacket(packet);
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                     close();

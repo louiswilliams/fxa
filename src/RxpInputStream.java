@@ -9,8 +9,11 @@ public class RxpInputStream extends InputStream implements DataListener {
     boolean closed;
 
     public RxpInputStream() {
+        this(RxpSocket.MSS);
+    }
 
-        buffer = new byte[100 * RxpSocket.MSS];
+    public RxpInputStream(int capacity) {
+        buffer = new byte[capacity];
     }
 
     @Override
