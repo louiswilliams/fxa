@@ -49,8 +49,12 @@ public class FxaClient {
             } else {
                 String[] parts = command.split(" ");
                 if(command.equalsIgnoreCase("connect")){
-                    socket.connect(netEmuAddress, (short) (port + 1));
-                    System.out.println("Connected");
+                    try {
+                        socket.connect(netEmuAddress, (short) (port + 1));
+                        System.out.println("Connected");
+                    } catch (IOException e) {
+                        System.err.println(e.getMessage());
+                    }
                 }
                 else if (parts[0].equalsIgnoreCase("get") && parts.length == 2){
                     try {

@@ -22,7 +22,7 @@ public class RxpSocket implements RxpReceiver {
     public static final int MSS = 1500;
     public static final int UDP_MAX = 65536;
     public static final int RECV_TIMEOUT = 1500;
-    public static final int SOCK_TIMEOUT = 15000;
+    public static final int SOCK_TIMEOUT = 60000;
 
 
     private RxpState state;
@@ -135,7 +135,7 @@ public class RxpSocket implements RxpReceiver {
                     e.printStackTrace();
                     break;
                 }
-            } while (true);
+            } while (state != RxpState.CLOSED);
         }).start();
     }
 
@@ -184,9 +184,15 @@ public class RxpSocket implements RxpReceiver {
     }
 
     public void close() {
-        dataReceiver.receiverStop();
-        inputStream.close();
-        outputStream.close();
+        synchronized (connectLock) {
+            state = RxpState.CLOSED;
+            if (dataReceiver == this) {
+                dataReceiver.receiverStop();
+            }
+            inputStream.close();
+            outputStream.close();
+            connectLock.notify();
+        }
     }
 
     void sendPacketWithAck(RxpPacket packet, int ack) throws IOException {
@@ -223,7 +229,7 @@ public class RxpSocket implements RxpReceiver {
 
         sequenceNum += packet.data.length;
         /* No need to keeps acks in the window */
-        if (!isOnlyAck(packet)) {
+        if (!shouldBypassWindow(packet)) {
             try {
                 synchronized (sendWindow) {
                     while (sendWindow.size() >= sendWindowSize) {
@@ -280,7 +286,11 @@ public class RxpSocket implements RxpReceiver {
         //TODO: received ack but the ack is not for the packet we expect (out of order)
 
         // 1. Server: receive a SYN (handshake)
-        if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn && !packet.auth){
+
+        if (packet.rst){
+            throw new IOException("Connection reset");
+        // Client/server: receive a reset
+        } else if(state == RxpState.LISTEN || state == RxpState.SYN_SENT && packet.syn && !packet.auth){
             sendAuthenticationRequest(packet.sequence + 1);
         }
         // 2. Client: receive a SYN+ACK+AUTH (handshake)
@@ -298,7 +308,7 @@ public class RxpSocket implements RxpReceiver {
                     connectLock.notify();
                 }
             } else {
-                state = RxpState.CLOSED;
+                System.err.println("Incorrect auth checksum");
                 sendReset();
             }
         }
@@ -306,13 +316,6 @@ public class RxpSocket implements RxpReceiver {
         else if (state == RxpState.AUTH_SENT_1 || state == RxpState.AUTH_COMPLETED && packet.ack){
             synchronized (connectLock) {
                 state = RxpState.ESTABLISHED;
-                connectLock.notify();
-            }
-        }
-        // Client/server: receive a reset
-        else if (packet.rst){
-            synchronized (connectLock) {
-                state = RxpState.CLOSED;
                 connectLock.notify();
             }
         }
@@ -366,16 +369,13 @@ public class RxpSocket implements RxpReceiver {
             sendAck(packet.sequence + packet.data.length);
         }
         else if (state == RxpState.LAST_ACK && packet.ack){
-            synchronized (connectLock) {
-                state = RxpState.CLOSED;
-                connectLock.notify();
-            }
+            close();
         }
         //TODO: established state, normal data packets and ACKs/Nacks
     }
 
     public void reset() throws IOException {
-
+        sendReset();
     }
 
     void sendSyn() throws IOException {
@@ -427,9 +427,8 @@ public class RxpSocket implements RxpReceiver {
     void sendReset() throws IOException {
         RxpPacket packet = new RxpPacket(this);
         packet.rst = true;
-
         sendPacket(packet);
-        state = RxpState.CLOSED;
+        close();
     }
 
     //received a SYN so send a SYN+ACK+AUTH
@@ -512,19 +511,19 @@ public class RxpSocket implements RxpReceiver {
                     RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
 
                     if (packet.destPort != srcPort) {
-                        throw new IOException("Received on wrong port!");
+//                        throw new IOException("Received on wrong port!");
                     }
 
                     receivePacket(packet);
                 } catch (IOException e) {
-                    printDebugErr(e.getMessage());
+                    System.err.println(e.getMessage());
+                    close();
                 } catch (InvalidChecksumException e) {
 //                    try{
 //                        sendNack();
 //                    } catch(IOException exception){
 //                        printDebugErr(exception.getMessage());
 //                    }
-                    // TODO: check if nack is sent correctly
                     printDebugErr("Dropping packet due to incorrect checksum");
                 }
             }
@@ -536,8 +535,8 @@ public class RxpSocket implements RxpReceiver {
         receiverRun = false;
     }
 
-    public boolean isOnlyAck(RxpPacket packet) {
-        return (packet.ack || packet.nack) && packet.data.length == 0 && !packet.syn && !packet.fin && !packet.auth && !packet.rst;
+    public boolean shouldBypassWindow(RxpPacket packet) {
+        return (packet.ack || packet.nack || packet.rst) && packet.data.length == 0 && !(packet.syn || packet.fin || packet.auth);
     }
 
     public RxpState getState() {

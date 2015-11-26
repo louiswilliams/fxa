@@ -29,7 +29,7 @@ public class RxpServerSocket implements RxpReceiver {
     }
 
 
-    public RxpSocket accept() {
+    public RxpSocket accept() throws IOException{
         RxpSocket client = null;
         try {
             synchronized (newClientLock) {
@@ -45,7 +45,10 @@ public class RxpServerSocket implements RxpReceiver {
         } catch (InterruptedException e) {
             e.printStackTrace();
         } catch (IOException e) {
-            System.err.println(e.getMessage());
+            if (client != null) {
+                newClients.remove(client);
+            }
+            throw e;
         }
         return client;
     }
@@ -73,6 +76,7 @@ public class RxpServerSocket implements RxpReceiver {
             while (run) {
                 byte[] buffer = new byte[RxpSocket.UDP_MAX];
                 DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
+                RxpSocket socket = null;
                 try {
                     netEmuSocket.receive(datagramPacket);
                     RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
@@ -82,7 +86,6 @@ public class RxpServerSocket implements RxpReceiver {
                         throw new IOException("Received on wrong port: " + packet.destPort);
                     }
 
-                    RxpSocket socket;
                     if ((socket = connectedClients.get(receivedKey)) != null) {
                         socket.receivePacket(packet);
                     } else if ((socket = findNewClientByKey(receivedKey)) != null) {
@@ -99,6 +102,16 @@ public class RxpServerSocket implements RxpReceiver {
                         }
                     }
                 } catch (IOException e) {
+                    if (socket != null) {
+                        if (socket.getState() != RxpState.CLOSED) {
+                            socket.close();
+                        }
+                        if (connectedClients.containsKey(getKey(socket))) {
+                            connectedClients.remove(getKey(socket));
+                        } else {
+                            newClients.remove();
+                        }
+                    }
                     System.err.println(e.getMessage());
                 } catch (InvalidChecksumException e) {
                     System.err.println("Dropping packet due to incorrect checksum");
@@ -113,8 +126,7 @@ public class RxpServerSocket implements RxpReceiver {
     }
 
     private static String getKey(InetAddress addr, int destPort) {
-        String key = addr.getHostAddress() + ":" + destPort;
-        return key;
+        return addr.getHostAddress() + ":" + destPort;
     }
 
     public void close() {

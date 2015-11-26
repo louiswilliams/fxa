@@ -18,6 +18,7 @@ public class RxpPacket {
     public boolean auth;
 
     public byte[] data;
+    public byte[] checksum;
 
     public static final int HEADER_SIZE = 20;
 
@@ -45,10 +46,10 @@ public class RxpPacket {
             buffer.put(HEADER_SIZE + i, data[i]);
         }
 
-        byte hash[] = computeHash(buffer.array(), buffer.capacity());
+        checksum = computeHash(buffer.array(), buffer.capacity());
 
-        for (int i = 0; i < hash.length; i++) {
-            buffer.put(16 + i, hash[i]);
+        for (int i = 0; i < checksum.length; i++) {
+            buffer.put(16 + i, checksum[i]);
         }
         return buffer.array();
     }
@@ -84,15 +85,13 @@ public class RxpPacket {
             data[i] = buffer.get(i + HEADER_SIZE);
         }
 
-        byte[] hash = computeHash(packet, length);
-        for (int i = 0; i < hash.length; i++) {
-            hash[i] = buffer.get(16 + i);
+        checksum = computeHash(packet, length);
+        for (int i = 0; i < checksum.length; i++) {
+            checksum[i] = buffer.get(16 + i);
         }
         boolean equal = true;
-        for (int i = 0; i < hash.length && equal; i++) {
-            if (hash[i] != buffer.get(16 + i)) {
-                equal = false;
-            }
+        for (int i = 0; i < checksum.length && equal; i++) {
+            equal = checksum[i] == buffer.get(16 + i);
         }
 
         if (!equal) {
@@ -115,6 +114,7 @@ public class RxpPacket {
         byte hash[] = md.digest();
         buffer.put(hash, 0 , 4);
 
+
         return buffer.array();
     }
 
@@ -133,6 +133,7 @@ public class RxpPacket {
         if (data.length > 8) {
             dataSummary += "...";
         }
+        String check[] = {String.valueOf(0xff & (int)checksum[0]), String.valueOf(0xff &(int)checksum[1]), String.valueOf(0xff &(int)checksum[2]), String.valueOf(0xff &(int)checksum[3])};
         builder.append("RxpPacket= ");
         builder.append("destPort: " + destPort + ", ");
         builder.append("srcPort: " + srcPort + ", ");
@@ -145,6 +146,7 @@ public class RxpPacket {
         builder.append("fin: " + fin + ", ");
         builder.append("rst: " + rst + ", ");
         builder.append("auth: " + auth + ", ");
+        builder.append("checksum: " + String.join("/", check));
         builder.append("data[" + data.length + "]: " + dataSummary);
 
         return builder.toString();

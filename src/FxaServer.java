@@ -44,9 +44,13 @@ public class FxaServer {
 
         new Thread(() -> {
             while (true) {
-                RxpSocket socket = serverSocket.accept();
-                FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
-                fileTransfer.serve();
+                try {
+                    RxpSocket socket = serverSocket.accept();
+                    FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
+                    fileTransfer.serve();
+                } catch (IOException e) {
+                    System.err.println("Could not accept: " + e.getMessage());
+                }
             }
         }).start();
 
