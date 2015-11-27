@@ -23,6 +23,11 @@ public class RxpPacket {
 
     public static final int HEADER_SIZE = 20;
 
+    /**
+     * Get the byte array of this packet
+     *
+     * @return This packet's byte array
+     */
     public byte[] getBytes() {
 
         ByteBuffer buffer = ByteBuffer.allocate(HEADER_SIZE + data.length);
@@ -55,6 +60,11 @@ public class RxpPacket {
         return buffer.array();
     }
 
+    /**
+     * Create a packet given a socket to initialize ports and window size
+     *
+     * @param socket Socket to base packet on
+     */
     public RxpPacket(RxpSocket socket) {
         this.srcPort = socket.getSourcePort();
         this.destPort = socket.getDestPort();
@@ -64,6 +74,13 @@ public class RxpPacket {
         sequence = socket.getSequence();
     }
 
+    /**
+     * Create a packet given a byte array and length
+     *
+     * @param packet Bytes received
+     * @param length Length of data
+     * @throws InvalidChecksumException Thrown if the calculated checksum does not matched what was received
+     */
     public RxpPacket (byte[] packet, int length) throws InvalidChecksumException {
         ByteBuffer buffer = ByteBuffer.wrap(packet);
 

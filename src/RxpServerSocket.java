@@ -1,3 +1,11 @@
+/**
+ * RxpServerSocket
+ *
+ * This class represents an Rxp server socket. It depends on a DatagramSocket for transport and a port to listen on.
+ * The socket accepts connections as they come in and returns sockets so a application can communicate with clients.
+ *
+ */
+
 import java.io.IOException;
 import java.net.*;
 import java.util.Iterator;
@@ -6,8 +14,12 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpServerSocket implements RxpReceiver {
 
+    /* Map of addr:port to connected sockets */
     final ConcurrentHashMap<String, RxpSocket> connectedClients;
+
+    /* Queue of clients in the process of connecting */
     final ConcurrentLinkedQueue<RxpSocket> newClients;
+
     DatagramSocket netEmuSocket;
     short port;
     boolean run;
@@ -15,7 +27,13 @@ public class RxpServerSocket implements RxpReceiver {
 
     private final Object newClientLock;
 
-    public RxpServerSocket(DatagramSocket netEmuSocket, short listenPort) throws SocketException, UnknownHostException {
+    /**
+     * Create a server socket and start listening for incoming connections
+     *
+     * @param netEmuSocket The DatagramSocket used for transport
+     * @param listenPort This is the RXP port to bind and listen on
+     */
+    public RxpServerSocket(DatagramSocket netEmuSocket, short listenPort) {
         this.port = listenPort;
         this.netEmuSocket = netEmuSocket;
         windowSize = 1;
@@ -29,6 +47,14 @@ public class RxpServerSocket implements RxpReceiver {
     }
 
 
+    /**
+     * This function blocks until a client attempts to connect and has done so successfully. A RxpSocket is returned
+     * which is used to communicate with a client
+     *
+     * @return Connected client socket
+     * @throws IOException This is thrown if there are any errors which prevent the connection from being established,
+     * invalid authorization or a timeout during the connection stage.
+     */
     public RxpSocket accept() throws IOException{
         RxpSocket client = null;
         try {
@@ -53,20 +79,19 @@ public class RxpServerSocket implements RxpReceiver {
         return client;
     }
 
-    public RxpSocket findNewClientByKey(String key) {
-        RxpSocket socket = null;
 
-        RxpSocket current;
-        Iterator<RxpSocket> it = newClients.iterator();
-        while (socket == null && it.hasNext()) {
-            current = it.next();
-            if (getKey(current).equals(key)) {
-                socket = current;
-            }
-        }
-        return socket;
-    }
-
+    /**
+     * This RxpReceiver reads DatagramPackets into RxpPackets and sends them to the appropriate socket.
+     *
+     * If a packet is corrupt or it's destination does not match the server's listening port, the packet is dropped
+     *
+     * If a packet is not associated with a socket, a new RxpSocket is created and an attempt to establish a connection
+     * is made. If a call to accept() has been made, it will return when the connection has been established.
+     *
+     * If a packet is associated with a socket that is currently being established, the packet is sent to the socket.
+     *
+     * If a packet is associate with a socket that is already established, the packet is sent to the socket.
+     */
     @Override
     public void receiverStart() {
         /* Data reception loop */
@@ -94,6 +119,7 @@ public class RxpServerSocket implements RxpReceiver {
                     } else {
                         System.out.println("Creating client socket for " + receivedKey);
                         socket = new RxpSocket(netEmuSocket, port, RxpServerSocket.this);
+                        socket.setRecvWindowSize(windowSize);
                         socket.attach(datagramPacket.getAddress(), packet.srcPort);
                         socket.receivePacket(packet);
                         newClients.add(socket);
@@ -121,6 +147,26 @@ public class RxpServerSocket implements RxpReceiver {
 
     }
 
+    /* Stop receiving packets, shutdown the server */
+    @Override
+    public void receiverStop() {
+        run = false;
+    }
+
+    private RxpSocket findNewClientByKey(String key) {
+        RxpSocket socket = null;
+
+        RxpSocket current;
+        Iterator<RxpSocket> it = newClients.iterator();
+        while (socket == null && it.hasNext()) {
+            current = it.next();
+            if (getKey(current).equals(key)) {
+                socket = current;
+            }
+        }
+        return socket;
+    }
+
     private static String getKey(RxpSocket socket) {
         return getKey(socket.getDestination(), socket.getDestPort());
     }
@@ -139,11 +185,6 @@ public class RxpServerSocket implements RxpReceiver {
             System.out.println("Socket closed");
         }
 //        receiverStop();
-    }
-
-    @Override
-    public void receiverStop() {
-        run = false;
     }
 
     public void setWindowSize(short size){

@@ -39,7 +39,6 @@ public class RxpSocket implements RxpReceiver {
     RxpReceiver dataReceiver;
 
     boolean receiverRun = true;
-    boolean connected = false;
     final Object connectLock;
     final Object timeoutLock;
 
@@ -97,12 +96,16 @@ public class RxpSocket implements RxpReceiver {
 
     /**
      * Attaches a socket to a remote host at a given port, but does not initiate a connection.
-     * Used by RxpServerSocket to provide sockets when accept() is called
+     * Used by RxpServerSocket to provide sockets when accept() is called.
+     *
+     * This also starts the reception timeout thread
+     * If no packets have been received in SOCK_TIMEOUT, the connection is closed due to inactivity
+     * If no packets have been received in RECV_TIMEOUT and the send window is not empty, the entire window is resent.
      *
      * @param dest Destination address
      * @param destPort Destination port
      */
-    void attach(InetAddress dest, short destPort) {
+    public void attach(InetAddress dest, short destPort) {
         this.destPort = destPort;
         this.destination = dest;
 
@@ -152,7 +155,7 @@ public class RxpSocket implements RxpReceiver {
 
     /**
      * Attach a socket to a remote host and initiate a connection. Blocks until connection is established
-     * or an IOException is thrown
+     * or an IOException is thrown due to a connection establishment problem
      *
      * @param dest Destination host
      * @param destPort Destination port
@@ -194,6 +197,9 @@ public class RxpSocket implements RxpReceiver {
         }
     }
 
+    /**
+     * Close a socket by stopping packet reception, and invalidating the input and output streams
+     */
     public void close() {
         synchronized (connectLock) {
             state = RxpState.CLOSED;
@@ -214,7 +220,13 @@ public class RxpSocket implements RxpReceiver {
         sendPacket(packet);
     }
 
-    void resendPacket(RxpPacket packet) throws IOException {
+    /**
+     * Retransmit an already-sent packet. The acknowledgement is updated with the most recently acknowledged packet
+     *
+     * @param packet Old packet to retransmit
+     * @throws IOException Thrown by the UDP transport layer
+     */
+    private void resendPacket(RxpPacket packet) throws IOException {
         packet.acknowledgement = lastAck;
         byte[] buffer = packet.getBytes();
 
@@ -225,14 +237,27 @@ public class RxpSocket implements RxpReceiver {
         netEmuSocket.send(datagramPacket);
     }
 
-    void resendWindow() throws IOException {
+    /**
+     * Resend the the entire window in the case that a connection has reached a RECV_TIMEOUT
+     *
+     * @throws IOException
+     */
+    private void resendWindow() throws IOException {
         printDebugErr("Resending window of " + sendWindow.size() + " packets");
         for (RxpPacket aSendWindow : sendWindow) {
             resendPacket(aSendWindow);
         }
     }
 
-    void sendPacket(RxpPacket packet) throws IOException {
+    /**
+     * Send a packet. Most of the necessary fields are added in like sequence, ports, acks, and window size.
+     * All packets will be added to the sending window unless they are RSTs or single ACKs.
+     * If the window is full, this call will block until the packet is added to the window.
+     *
+     * @param packet Packet with data to send
+     * @throws IOException
+     */
+    private void sendPacket(RxpPacket packet) throws IOException {
         packet.sequence = sequenceNum;
         packet.srcPort = srcPort;
         packet.destPort = destPort;
@@ -261,9 +286,21 @@ public class RxpSocket implements RxpReceiver {
         printDebug("Sending (" + state + "): " + packet);
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
-
     }
 
+    /**
+     * Called by a RxpReceiver when a valid packet is received. This function is responsible for the majority of the
+     * logic needed by the socket.
+     *
+     * When a packet is received, the window is iterated upon and outgoing packets with sequences <= the current
+     * packet's acknowledgement are removed.
+     *
+     * If the current packet is a NACK and the acknowledgement is less than a packet's sequence,
+     * the packet is retransmitted (which bypasses the sending window).
+     *
+     * @param packet Packet to be handled by the socket
+     * @throws IOException Thrown if there are fatal connection errors
+     */
     void receivePacket(RxpPacket packet) throws IOException {
 
         printDebug("Received (" + state + "): " + packet);
@@ -272,8 +309,8 @@ public class RxpSocket implements RxpReceiver {
         updateLastReceived();
         sendWindowSize = packet.windowSize;
 
+        /* Iterate through send window and remove old packets. Resend NACK's packets */
         Iterator<RxpPacket> windowIt = sendWindow.iterator();
-
         while (windowIt.hasNext()) {
             RxpPacket item = windowIt.next();
             synchronized (sendWindow) {
@@ -290,18 +327,12 @@ public class RxpSocket implements RxpReceiver {
                 }
             }
         }
+
         if (sendWindow.size() > 0 ) {
             printDebug("Send window: " + sendWindow.size());
         }
 
-
-        // Iterate through send window and remove ack'd packets
-        /*TODO: received nack; check ack number and resend from there on;
-        //TODO: what about if a nack is received in another state other than established?*/
-        //TODO: received ack but the ack is not for the packet we expect (out of order)
-
         // 1. Server: receive a SYN (handshake)
-
         if (packet.rst){
             throw new IOException("Connection reset");
         // Client/server: receive a reset
@@ -349,9 +380,10 @@ public class RxpSocket implements RxpReceiver {
         else if (state == RxpState.ESTABLISHED || state == RxpState.CLOSE_WAIT
                 || ((state == RxpState.FIN_WAIT_1 || state == RxpState.FIN_WAIT_2) && !packet.fin)) {
 
+            /* Only if data is received do we want to add it to the input stream and update our sequence */
             if (packet.data.length > 0) {
 
-                /* Make sure the sequence what we expect */
+                /* Make sure the sequence is what we expect */
                 if (lastAck == packet.sequence){
                     /* Write to stream */
                     inputStream.received(packet.data, packet.data.length);
@@ -361,11 +393,13 @@ public class RxpSocket implements RxpReceiver {
                     } else {
                         lastAck = packet.sequence + packet.data.length;
                     }
+                /* This will happen if a previous packet has been dropped. Send a NACK for the packet we were expecting */
                 } else if (packet.sequence > lastAck) {
-                    System.err.printf("Dropping over-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
+                    printDebugErr("Dropping over-sequence packet (" + packet.sequence + "), expected " + lastAck);
                     sendNack(lastAck);
+                /* This will happen if an old packet has been retransmitted. Send an ACK for the packet we already have */
                 } else if (packet.sequence < lastAck) {
-                    System.err.printf("Dropping under-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
+                    printDebugErr("Dropping under-sequence packet (" + packet.sequence + "), expected " + lastAck);
                     sendAck(lastAck);
                 }
             }
@@ -402,6 +436,11 @@ public class RxpSocket implements RxpReceiver {
         //TODO: established state, normal data packets and ACKs/Nacks
     }
 
+    /**
+     * Reset a connection without sending or receiving any remaining data
+     *
+     * @throws IOException Thrown if there are connection issues
+     */
     public void reset() throws IOException {
         sendReset();
     }
@@ -536,14 +575,28 @@ public class RxpSocket implements RxpReceiver {
     }
 
 
+    /**
+     * Get the outputStream for this socket. Data written to this stream is transmitted to the remote host
+     *
+     * @return Output stream for this socket
+     */
     public OutputStream getOutputStream() {
         return outputStream;
     }
 
+    /**
+     * Get the inputstream for this socket. Data read from this stream has been received from the remote host.
+     * @return Input stream for this socket
+     */
     public InputStream getInputStream() {
         return inputStream;
     }
 
+
+    /**
+     * Receive valid packets on this socket only and pass to receivePacket()
+     * If a packet is sent to a port other than the listening port, the packet is dropped.
+     */
     @Override
     public void receiverStart() {
         /* Data reception loop */
@@ -555,24 +608,25 @@ public class RxpSocket implements RxpReceiver {
                 try {
                     netEmuSocket.receive(datagramPacket);
 
-                    RxpPacket packet = new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
+                    RxpPacket packet = null;
+                    try {
+                        packet= new RxpPacket(datagramPacket.getData(), datagramPacket.getLength());
+                    } catch (InvalidChecksumException e) {
+                        printDebugErr("Dropping packet due to incorrect checksum");
+                        sendNack(lastAck);
+                    }
 
-                    if (packet.destPort != srcPort) {
-                        printDebugErr("Dropping packet send to wrong port");
-                    } else {
-                        receivePacket(packet);
+                    if (packet != null) {
+                        if (packet.destPort != srcPort) {
+                            printDebugErr("Dropping packet send to wrong port");
+                        } else {
+                            receivePacket(packet);
+                        }
                     }
 
                 } catch (IOException e) {
                     System.err.println(e.getMessage());
                     close();
-                } catch (InvalidChecksumException e) {
-//                    try{
-//                        sendNack();
-//                    } catch(IOException exception){
-//                        printDebugErr(exception.getMessage());
-//                    }
-                    printDebugErr("Dropping packet due to incorrect checksum");
                 }
             }
         }).start();
