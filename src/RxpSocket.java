@@ -42,7 +42,7 @@ public class RxpSocket implements RxpReceiver {
     final Object connectLock;
     final Object timeoutLock;
 
-    boolean debugEnabled = true;
+    boolean debugEnabled = false;
     boolean transferring = false;
 
     final Queue<RxpPacket> sendWindow;
