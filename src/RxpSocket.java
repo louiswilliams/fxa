@@ -411,7 +411,6 @@ public class RxpSocket implements RxpReceiver {
             state = RxpState.TIMED_WAIT;
             System.out.println("Fin Received");
             sendAck(packet.sequence + packet.data.length);
-            //TODO: timeout
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin){
             System.out.println("Fin Received");
@@ -423,20 +422,17 @@ public class RxpSocket implements RxpReceiver {
         }
         else if (state == RxpState.CLOSING && packet.ack){
             state = RxpState.TIMED_WAIT;
-            //TODO: timeout
         }
         else if (state == RxpState.FIN_WAIT_2 && packet.fin){
             System.out.println("Fin Received");
             state = RxpState.TIMED_WAIT;
             sendAck(packet.sequence + packet.data.length);
             close();
-            //TODO: timeout
         }
         else if (state == RxpState.LAST_ACK && packet.ack && sendWindow.isEmpty()){
             System.out.println("Closing Connection");
             close();
         }
-        //TODO: established state, normal data packets and ACKs/Nacks
     }
 
     /**
@@ -463,9 +459,6 @@ public class RxpSocket implements RxpReceiver {
     }
 
     void sendData(byte[] data, int off, int len) throws IOException {
-        //TODO: split up data into packets of size MTU and send only the number that the window allows
-        //TODO: keep track of packets sent and not acked yet; maybe a queue or list of packets
-
         if (state == RxpState.CLOSED) {
             throw new IOException("Cannot send data because socket is closed");
         }
