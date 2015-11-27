@@ -39,9 +39,12 @@ public class RxpSocket implements RxpReceiver {
     RxpReceiver dataReceiver;
 
     boolean receiverRun = true;
-    boolean debugEnabled = false;
+    boolean connected = false;
     final Object connectLock;
     final Object timeoutLock;
+
+    boolean debugEnabled = true;
+    boolean transferring = false;
 
     final Queue<RxpPacket> sendWindow;
 
@@ -111,6 +114,14 @@ public class RxpSocket implements RxpReceiver {
         new Thread(() -> {
             long recvDiff = 0;
             do {
+                if(state == RxpState.CLOSE_WAIT && !transferring) {
+                    try{
+                        state = RxpState.LAST_ACK;
+                        sendFin();
+                    } catch (IOException e){
+                        e.printStackTrace();
+                    }
+                }
                 synchronized (timeoutLock) {
                     recvDiff = System.currentTimeMillis() - lastRecvTime;
                     if (recvDiff >= SOCK_TIMEOUT) {
@@ -187,11 +198,14 @@ public class RxpSocket implements RxpReceiver {
         synchronized (connectLock) {
             state = RxpState.CLOSED;
             if (dataReceiver == this) {
-                dataReceiver.receiverStop();
+//                dataReceiver.receiverStop();
+            } else {
+                dataReceiver.connectionClosed(this);
             }
             inputStream.close();
             outputStream.close();
             connectLock.notify();
+            System.out.println("Socket Closed");
         }
     }
 
@@ -247,6 +261,7 @@ public class RxpSocket implements RxpReceiver {
         printDebug("Sending (" + state + "): " + packet);
         DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
         netEmuSocket.send(datagramPacket);
+
     }
 
     void receivePacket(RxpPacket packet) throws IOException {
@@ -320,13 +335,19 @@ public class RxpSocket implements RxpReceiver {
             }
         }
         //receive a FIN
+        else if (state == RxpState.ESTABLISHED && packet.fin && !transferring){
+            state = RxpState.FIN_WAIT_1; //worked with closing
+            System.out.println("Fin Received");
+            sendFinAck(packet.sequence + packet.data.length);
+        }
         else if (state == RxpState.ESTABLISHED && packet.fin){
             state = RxpState.CLOSE_WAIT;
+            System.out.println("Fin Received");
             sendAck(packet.sequence + packet.data.length);
         }
         // Normal, established data packet
-        else if (state == RxpState.ESTABLISHED) {
-            //TODO: just an ack but no data; nack; data
+        else if (state == RxpState.ESTABLISHED || state == RxpState.CLOSE_WAIT
+                || ((state == RxpState.FIN_WAIT_1 || state == RxpState.FIN_WAIT_2) && !packet.fin)) {
 
             if (packet.data.length > 0) {
 
@@ -347,14 +368,16 @@ public class RxpSocket implements RxpReceiver {
                     System.err.printf("Dropping under-sequence packet (%d), expected %d\n", packet.sequence, lastAck);
                     sendAck(lastAck);
                 }
-                //TODO: review packet and determine what data to send, if any
             }
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin && packet.ack){
             state = RxpState.TIMED_WAIT;
+            System.out.println("Fin Received");
             sendAck(packet.sequence + packet.data.length);
+            //TODO: timeout
         }
         else if (state == RxpState.FIN_WAIT_1 && packet.fin){
+            System.out.println("Fin Received");
             state = RxpState.CLOSING;
             sendAck(packet.sequence + packet.data.length);
         }
@@ -363,12 +386,17 @@ public class RxpSocket implements RxpReceiver {
         }
         else if (state == RxpState.CLOSING && packet.ack){
             state = RxpState.TIMED_WAIT;
+            //TODO: timeout
         }
         else if (state == RxpState.FIN_WAIT_2 && packet.fin){
+            System.out.println("Fin Received");
             state = RxpState.TIMED_WAIT;
             sendAck(packet.sequence + packet.data.length);
+            close();
+            //TODO: timeout
         }
         else if (state == RxpState.LAST_ACK && packet.ack){
+            System.out.println("Closing Connection");
             close();
         }
         //TODO: established state, normal data packets and ACKs/Nacks
@@ -429,6 +457,25 @@ public class RxpSocket implements RxpReceiver {
         packet.rst = true;
         sendPacket(packet);
         close();
+    }
+
+    void sendFin() throws IOException {
+        if(state == RxpState.ESTABLISHED){
+            state = RxpState.FIN_WAIT_1;
+        } else if(state == RxpState.CLOSE_WAIT){
+            state = RxpState.LAST_ACK;
+        }
+
+        RxpPacket packet = new RxpPacket(this);
+        packet.fin = true;
+        sendPacket(packet);
+        System.out.println("Fin sent");
+    }
+
+    void sendFinAck(int ack) throws IOException {
+        RxpPacket packet = new RxpPacket(this);
+        packet.fin = true;
+        sendPacketWithAck(packet, ack);
     }
 
     //received a SYN so send a SYN+ACK+AUTH
@@ -536,6 +583,10 @@ public class RxpSocket implements RxpReceiver {
         receiverRun = false;
     }
 
+    @Override
+    public void connectionClosed(RxpSocket socket){
+    }
+
     public boolean shouldBypassWindow(RxpPacket packet) {
         return (packet.ack || packet.nack || packet.rst) && packet.data.length == 0 && !(packet.syn || packet.fin || packet.auth);
     }
@@ -603,5 +654,20 @@ public class RxpSocket implements RxpReceiver {
     public void setRecvWindowSize(short size) {
         recvWindowSize = size;
     }
+
+    public void resetOutputStream(){
+        outputStream = new RxpOutputStream(this, 10 * MSS);
+    }
+
+    public void resetInputStream(){
+        inputStream = new RxpInputStream(10 * MSS);
+    }
+
+    public void setTransferring(boolean value){
+        transferring = value;
+    }
+
+
+
 
 }

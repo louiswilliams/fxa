@@ -81,4 +81,12 @@ public class RxpInputStream extends InputStream implements DataListener {
             received(data[i]);
         }
     }
+
+    public int getSize() {
+        int size;
+        synchronized (buffer) {
+            size = this.size;
+        }
+        return size;
+    }
 }

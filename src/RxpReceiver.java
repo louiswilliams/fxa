@@ -12,4 +12,6 @@ public interface RxpReceiver {
      */
     void receiverStop();
 
+    void connectionClosed(RxpSocket socket);
+
 }

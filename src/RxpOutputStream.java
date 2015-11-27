@@ -1,6 +1,5 @@
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class RxpOutputStream extends OutputStream {
 

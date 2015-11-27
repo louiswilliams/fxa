@@ -1,6 +1,3 @@
-import jdk.internal.util.xml.impl.Input;
-
-import javax.sound.midi.SysexMessage;
 import java.io.*;
 
 public class FxaFileTransfer {
@@ -93,6 +90,8 @@ public class FxaFileTransfer {
     }
 
     public void respondToGetFile(File file) throws IOException {
+        socket.setTransferring(true);
+
         OutputStream outputStream = socket.getOutputStream();
         String response;
         if (file.exists()) {
@@ -103,11 +102,14 @@ public class FxaFileTransfer {
         } else {
             response = getResponseHeader(STATUS_ERR, GET_HEADER, "File '" + file.getName() + "' does not exists");
             System.out.println("[FXA] Resp: " + response);
+            socket.setTransferring(true);
             outputStream.write(response.getBytes());
         }
     }
 
     public void respondToPostFile(String file, int len) throws IOException {
+        socket.setTransferring(true);
+
         OutputStream outputStream = socket.getOutputStream();
         String response;
         try {
@@ -121,6 +123,8 @@ public class FxaFileTransfer {
     }
 
     public void sendFile(File filename) throws IOException {
+        socket.setTransferring(true);
+
         OutputStream outputStream = socket.getOutputStream();
         FileInputStream inputStream = new FileInputStream(filename);
         long length = filename.length();
@@ -140,9 +144,12 @@ public class FxaFileTransfer {
             }
         }
         System.out.println("\n[FXA] File send complete");
+        socket.setTransferring(false);
     }
 
     public File receiveFile(String fileName, int length) throws IOException {
+        socket.setTransferring(true);
+
         makeDownloadDir();
         File file = new File(DOWLOAD_DIR + "/" + fileName);
 
@@ -162,6 +169,7 @@ public class FxaFileTransfer {
                 totalBytesRead += bytesRead;
                 fileOutput.write(buffer, 0, bytesRead);
             } else {
+                socket.setTransferring(false);
                 break;
             }
             if (socket.debugEnabled) {
@@ -172,6 +180,7 @@ public class FxaFileTransfer {
         }
         fileOutput.close();
         System.out.println("\n[FXA] File receive completed (" + totalBytesRead + " bytes)");
+        socket.setTransferring(false);
         return file;
     }
 

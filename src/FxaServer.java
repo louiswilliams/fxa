@@ -46,6 +46,8 @@ public class FxaServer {
             while (true) {
                 try {
                     RxpSocket socket = serverSocket.accept();
+                    socket.resetInputStream();
+                    socket.resetOutputStream();
                     FxaFileTransfer fileTransfer = new FxaFileTransfer(socket);
                     fileTransfer.serve();
                 } catch (IOException e) {
@@ -59,9 +61,12 @@ public class FxaServer {
             String[] parts = command.split(" ");
 
             if (command.equals("terminate")) {
-                serverSocket.close();
+                try {
+                    serverSocket.close();
+                } catch (IOException e){
+                    System.err.println(e.getMessage());
+                }
                 break;
-                //TODO: make sure the connection closed correctly at both ends
             } else if (parts[0].equals("window") && parts.length == 2) {
                 try {
                     short size = Short.parseShort(parts[1]);
@@ -73,13 +78,10 @@ public class FxaServer {
                 } catch (NumberFormatException e) {
                     System.out.println("Not a valid window size.");
                 }
-                //TODO: make sure this works
             } else {
                 System.out.println("Not a valid command.");
             }
         }
-
-        System.exit(0);
     }
 
     private static void exitWithError(String message) {

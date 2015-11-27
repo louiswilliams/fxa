@@ -129,8 +129,16 @@ public class RxpServerSocket implements RxpReceiver {
         return addr.getHostAddress() + ":" + destPort;
     }
 
-    public void close() {
-        receiverStop();
+    public void close() throws IOException {
+        for(RxpSocket socket: connectedClients.values()){
+            socket.sendFin();
+        }
+        for (RxpSocket socket: connectedClients.values()){
+            while (socket.getState() != RxpState.CLOSED){}
+            connectedClients.remove(getKey(socket));
+            System.out.println("Socket closed");
+        }
+//        receiverStop();
     }
 
     @Override
@@ -144,5 +152,10 @@ public class RxpServerSocket implements RxpReceiver {
 
     public short getWindowSize(){
         return windowSize;
+    }
+
+    @Override
+    public void connectionClosed(RxpSocket socket){
+        connectedClients.remove(getKey(socket));
     }
 }

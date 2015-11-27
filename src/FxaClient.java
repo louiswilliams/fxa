@@ -2,7 +2,6 @@ import java.io.*;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.nio.file.NoSuchFileException;
 import java.util.Scanner;
 
 public class FxaClient {
@@ -51,26 +50,28 @@ public class FxaClient {
                 if(command.equalsIgnoreCase("connect")){
                     try {
                         socket.connect(netEmuAddress, (short) (port + 1));
+                        socket.resetInputStream();
+                        socket.resetOutputStream();
+                        fileTransfer = new FxaFileTransfer(socket);
                         System.out.println("Connected");
                     } catch (IOException e) {
                         System.err.println(e.getMessage());
                     }
                 }
                 else if (parts[0].equalsIgnoreCase("get") && parts.length == 2){
+                    System.out.println("In get and socket state: " + socket.getState());
                     try {
-                        fileTransfer.getFile(parts[1]);
+                        fileTransfer.getFile(parts[1]); //TODO: new thread? cant send and type disconnect command at same time
                     } catch (IOException e) {
                         System.err.println("Error: " + e.getMessage());
                     }
-                    //TODO: make sure this works
                 }
                 else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{
-                        fileTransfer.postFile(new File("src/" + parts[1]));
+                        fileTransfer.postFile(new File("src/" + parts[1])); //TODO: new thread? cant send and type disconnect command at same time
                     } catch (IOException e){
                         System.err.println("Error: " + e.getMessage());
                     }
-                    //TODO: make sure this works
                 }
                 else if (parts[0].equalsIgnoreCase("window")&& parts.length == 2){
                     try{
@@ -83,11 +84,9 @@ public class FxaClient {
                     }catch (NumberFormatException e){
                         System.out.println("Not a valid window size.");
                     }
-                    //TODO: make sure this works
                 }
                 else if (command.equalsIgnoreCase("disconnect")){
-                    socket.close();
-                    break;
+                    socket.sendFin();
                 }
                 else {
                     System.out.println("Not a valid command. Please try again.");
@@ -95,8 +94,6 @@ public class FxaClient {
 
             }
         }
-
-        System.exit(0);
     }
 
     private static boolean isValidPort(short port){
