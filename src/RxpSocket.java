@@ -481,13 +481,6 @@ public class RxpSocket implements RxpReceiver {
         sendData(data, 0, len);
     }
 
-    void sendDataAndAck(byte[] data) throws IOException {
-        RxpPacket packet = new RxpPacket(this);
-        packet.data = data;
-        packet.ack = true;
-        sendPacket(packet);
-    }
-
     void sendNack(int ack) throws IOException {
         RxpPacket packet = new RxpPacket(this);
         packet.nack = true;
@@ -746,8 +739,5 @@ public class RxpSocket implements RxpReceiver {
     public void setTransferring(boolean value){
         transferring = value;
     }
-
-
-
 
 }

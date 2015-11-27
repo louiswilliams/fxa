@@ -11,10 +11,18 @@ public class FxaServer {
     public static InetAddress netEmuAddress;
     public static short netEmuPort;
 
-    private static FxaFileTransfer fileTransfer;
-
     static final String usage = "FxaServer PORT NET_EMU_ADDRESS NET_EMU_PORT";
 
+    /**
+     * Server for the FxA application. Handles the following commands: window W
+     * (changes the receiving window size to W); terminate (disconnects all client connections)
+     *
+     * @param args X: the port number at which the FxA-client’s UDP socket should bind to (even number and equal to the server’s port number minus 1.)
+     *             A: the IP address of NetEmu
+     *             P: the UDP port number of NetEmu
+     * @throws SocketException
+     * @throws UnknownHostException
+     */
     public static void main(String[] args) throws SocketException, UnknownHostException {
 
         if (args.length != 3) {
@@ -42,6 +50,7 @@ public class FxaServer {
 
         RxpServerSocket serverSocket = new RxpServerSocket(netEmu, port);
 
+        //thread to handle socket connections and file transfers
         new Thread(() -> {
             while (true) {
                 try {
@@ -56,6 +65,7 @@ public class FxaServer {
             }
         }).start();
 
+        //listens to the command line for new commands
         while(true) {
             String command = keyboard.nextLine();
             String[] parts = command.split(" ");
@@ -84,11 +94,22 @@ public class FxaServer {
         }
     }
 
+    /**
+     * Prints an error message and exits application.
+     *
+     * @param message the error message
+     */
     private static void exitWithError(String message) {
         System.err.println(message);
         System.exit(1);
     }
 
+    /**
+     * Checks if a port is valid.
+     *
+     * @param port Port to be tested
+     * @return true if the port is valid
+     */
     private static boolean isValidPort(short port){
         return(port>1 && port<65535);
     }

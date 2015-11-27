@@ -11,6 +11,16 @@ public class FxaClient {
     public static short netEmuPort;
     private static FxaFileTransfer fileTransfer;
 
+    /**
+     * Client for the FxA application. Handles the following commands: connect;
+     * window W (changes the receiving window size to W); get F (requests file F from the
+     * server); post F (sends file F to the server); disconnect
+     *
+     * @param args X: the port number at which the FxA-client’s UDP socket should bind to (even number and equal to the server’s port number minus 1.)
+     *             A: the IP address of NetEmu
+     *             P: the UDP port number of NetEmu
+     * @throws IOException
+     */
     public static void main(String[] args) throws IOException {
 
         if (args.length != 3)
@@ -40,6 +50,7 @@ public class FxaClient {
 
         fileTransfer = new FxaFileTransfer(socket);
 
+        //listens to the command line for new commands
         while(true){
             String command = keyboard.nextLine();
 
@@ -70,7 +81,7 @@ public class FxaClient {
                 }
                 else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{
-                        fileTransfer.postFile(new File("src/" + parts[1])); //TODO: new thread? cant send and type disconnect command at same time
+                        fileTransfer.postFile(new File("src/" + parts[1])); 
                     } catch (IOException e){
                         System.err.println("Error: " + e.getMessage());
                     }
@@ -98,6 +109,12 @@ public class FxaClient {
         }
     }
 
+    /**
+     * Checks if a port is valid.
+     *
+     * @param port Port to be tested
+     * @return true if the port is valid
+     */
     private static boolean isValidPort(short port){
         return(port>1 && port<65535);
     }
