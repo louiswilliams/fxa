@@ -121,7 +121,8 @@ public class FxaFileTransfer {
             response = getResponseHeader(STATUS_ERR, GET_HEADER, "File '" + file.getName() + "' does not exists");
             System.out.println("[FXA] Resp: " + response);
             socket.setTransferring(true);
-            outputStream.write(response.getBytes());
+            socket.sendData(response.getBytes(), response.getBytes().length);
+//            outputStream.write(response.getBytes());
         }
     }
 
@@ -144,7 +145,8 @@ public class FxaFileTransfer {
             response = getResponseHeader(STATUS_ERR, POST_HEADER, "File could not be received: " + e.getMessage());
         }
         System.out.println("[FXA] Resp: " + response);
-        outputStream.write(response.getBytes());
+        socket.sendData(response.getBytes(), response.getBytes().length);
+//        outputStream.write(response.getBytes());
     }
 
     /**
@@ -208,7 +210,6 @@ public class FxaFileTransfer {
                 totalBytesRead += bytesRead;
                 fileOutput.write(buffer, 0, bytesRead);
             } else {
-                socket.setTransferring(false);
                 break;
             }
             if (socket.debugEnabled) {

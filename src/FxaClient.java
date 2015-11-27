@@ -60,11 +60,13 @@ public class FxaClient {
                 }
                 else if (parts[0].equalsIgnoreCase("get") && parts.length == 2){
                     System.out.println("In get and socket state: " + socket.getState());
-                    try {
-                        fileTransfer.getFile(parts[1]); //TODO: new thread? cant send and type disconnect command at same time
-                    } catch (IOException e) {
-                        System.err.println("Error: " + e.getMessage());
-                    }
+                    new Thread(() -> {
+                        try {
+                            fileTransfer.getFile(parts[1]);
+                        }catch (IOException e) {
+                            System.err.println("Error: " + e.getMessage());
+                        }
+                    }).start();
                 }
                 else if (parts[0].equalsIgnoreCase("post") && parts.length == 2){
                     try{

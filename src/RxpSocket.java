@@ -117,7 +117,7 @@ public class RxpSocket implements RxpReceiver {
         new Thread(() -> {
             long recvDiff = 0;
             do {
-                if(state == RxpState.CLOSE_WAIT && !transferring) {
+                if(state == RxpState.CLOSE_WAIT && !transferring && sendWindow.isEmpty()) {
                     try{
                         state = RxpState.LAST_ACK;
                         sendFin();
@@ -380,6 +380,9 @@ public class RxpSocket implements RxpReceiver {
         else if (state == RxpState.ESTABLISHED || state == RxpState.CLOSE_WAIT
                 || ((state == RxpState.FIN_WAIT_1 || state == RxpState.FIN_WAIT_2) && !packet.fin)) {
 
+            if (state == RxpState.FIN_WAIT_1 && packet.ack){
+                state = RxpState.FIN_WAIT_2;
+            }
             /* Only if data is received do we want to add it to the input stream and update our sequence */
             if (packet.data.length > 0) {
 
@@ -429,7 +432,7 @@ public class RxpSocket implements RxpReceiver {
             close();
             //TODO: timeout
         }
-        else if (state == RxpState.LAST_ACK && packet.ack){
+        else if (state == RxpState.LAST_ACK && packet.ack && sendWindow.isEmpty()){
             System.out.println("Closing Connection");
             close();
         }
@@ -507,7 +510,30 @@ public class RxpSocket implements RxpReceiver {
 
         RxpPacket packet = new RxpPacket(this);
         packet.fin = true;
-        sendPacket(packet);
+        packet.sequence = sequenceNum;
+        packet.srcPort = srcPort;
+        packet.destPort = destPort;
+        packet.windowSize = recvWindowSize;
+        byte[] buffer = packet.getBytes();
+
+        sequenceNum += packet.data.length;
+
+        try {
+            synchronized (sendWindow) {
+                while (sendWindow.size() >= sendWindowSize) {
+                    printDebug("Send window is full: "  + sendWindowSize + ", waiting...");
+                    sendWindow.wait();
+                }
+                sendWindow.add(packet);
+                updateLastSent();
+            }
+        } catch (InterruptedException e) {
+//                e.printStackTrace();
+        }
+
+        printDebug("Sending (" + state + "): " + packet);
+        DatagramPacket datagramPacket = new DatagramPacket(buffer, buffer.length);
+        netEmuSocket.send(datagramPacket);
         System.out.println("Fin sent");
     }
 
